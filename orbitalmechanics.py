@@ -113,11 +113,14 @@ class Orbit:
         :param gamma: Launch angle (degrees)
         :return: New instance of Orbit
         """
+        if mu is None and m1 is not None:
+            mu = cls.G * (m1 + m2)
+
         gamma = np.radians(gamma)
-        vtan = v * np.sin(gamma)
-        vrad = v * np.cos(gamma)
-        h = r * vrad
-        e = vtan**2 / mu - 1/r
+        vr = v * np.sin(gamma)
+        vt = v * np.cos(gamma)
+        h = r * vt
+        e = np.sqrt(vr**2*h**2/mu**2 + (h**2/(mu*r) - 1)**2)
         return cls(mu=mu, e=e, h=h, body1radius=body1radius, body2radius=body2radius)
 
     ############# Calculations #############
@@ -321,6 +324,7 @@ class Orbit:
         """
         Calculates the distance from the primary body center to a point on the orbit at a given true anomaly.
         """
+        theta = np.radians(theta)
         return self._h**2 / (self.mu) * 1/(1 + self._e * np.cos(theta))
     
     def theta_at_r(self, r):
@@ -336,6 +340,7 @@ class Orbit:
         """
         Calculates the flight path angle at a given true anomaly.
         """
+        theta = np.radians(theta)
         return np.degrees(np.arctan(self._e * np.sin(theta) / (1 + self._e * np.cos(theta))))
     
     def v_esc(self, r):
@@ -425,18 +430,20 @@ class Orbit:
         """
         # Criar array de anomalia verdadeira
         if self._e == 1:
-            theta = np.linspace(-np.pi*2/3, np.pi*2/3, 1000)
+            theta = np.linspace(-120, 120, 1000)
         elif self._e > 1:
-            theta = np.linspace(-self.theta_inf(), self.theta_inf(), 1000)
+            #theta = np.linspace(np.radians(-self.theta_inf()), np.radians(self.theta_inf()), 1000)
+            epsilon = 15
+            theta = np.linspace(-self.theta_inf() + epsilon, self.theta_inf() - epsilon, 1000)
         else:
-            theta = np.linspace(0, 2*np.pi, 1000)
+            theta = np.linspace(0, 360, 1000)
         
         # Calcular raio para cada ângulo
         r = self.r_at_theta(theta)
         
         # Converter para coordenadas cartesianas
-        x = r * np.cos(theta)
-        y = r * np.sin(theta)
+        x = r * np.cos(np.radians(theta))
+        y = r * np.sin(np.radians(theta))
         
         # Criar o plot
         plt.figure(figsize=(8, 8))

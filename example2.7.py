@@ -53,12 +53,12 @@ print(f"e) Semi-eixo maior: {orbita.a:.2f} km")
 print(f"f) Período orbital: {orbita.T/60/60:.3f} horas")
 
 # g) Raio médio
-r_mean = orbita.r_mean
+r_mean = orbita.r_mean()
 print(f"g) Raio médio: {r_mean:.2f} km")
 
 # h) Anomalia verdadeira em raio médio
 theta_r_mean = orbita.theta_at_r(r_mean)
-print(f"h) Anomalia verdadeira em raio médio: {np.degrees(theta_r_mean[0]):.2f}° e {np.degrees(theta_r_mean[1]):.2f}°")
+print(f"h) Anomalia verdadeira em raio médio: {theta_r_mean[0]:.2f}° e {theta_r_mean[1]:.2f}°")
 
 # i) Velocidade em raio médio
 v_mean = orbita.v_at_r(r_mean)
@@ -66,12 +66,12 @@ print(f"i) Velocidade em raio médio: {v_mean:.3f} km/s")
 
 # j) Ângulo de trajetória em raio médio
 gamma_r_mean = orbita.gamma_at_theta(theta_r_mean[0])
-print(f"j) Ângulo de trajetória em raio médio: {np.degrees(gamma_r_mean):.2f}°")
+print(f"j) Ângulo de trajetória em raio médio: {gamma_r_mean:.2f}°")
 
 # k) Ângulo de trajetória máximo
-theta_max = np.arccos(-orbita.e)
+theta_max = np.degrees(np.arccos(-orbita.e))
 gamma_max = orbita.gamma_at_theta(theta_max)
-print(f"k) Ângulo de trajetória máximo: {np.degrees(gamma_max):.2f}° em theta = {np.degrees(theta_max):.2f}°")
+print(f"k) Ângulo de trajetória máximo: {gamma_max:.2f}° em theta = {theta_max:.2f}°")
 
 # Plotar a órbita
 orbita.plot(points=[(rp, 0), (ra, 180)])

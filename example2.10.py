@@ -21,7 +21,7 @@ r = 14600  # km
 v = 8.6    # km/s
 gamma = 50 # graus
 
-orbita = Orbit.init_from_r_v_gamma(mu=M_earth, r=r, v=v, gamma=gamma, body1radius=R_terra)
+orbita = Orbit.init_from_r_v_gamma(m1=M_earth, r=r, v=v, gamma=gamma, body1radius=R_terra)
 
 # Calcular velocidade de escape na posição r
 v_esc = orbita.v_esc(r)

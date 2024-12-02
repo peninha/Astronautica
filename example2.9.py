@@ -22,11 +22,11 @@ theta1 = orbita.theta_at_r(r1)[0]  # Pegamos apenas o primeiro valor pois é sim
 theta2 = orbita.theta_at_r(r2)[0]
 
 # Converter para coordenadas cartesianas
-x1 = r1 * np.cos(theta1)
-y1 = r1 * np.sin(theta1)
+x1 = r1 * np.cos(np.radians(theta1))
+y1 = r1 * np.sin(np.radians(theta1))
 
-x2 = r2 * np.cos(theta2)
-y2 = r2 * np.sin(theta2)
+x2 = r2 * np.cos(np.radians(theta2))
+y2 = r2 * np.sin(np.radians(theta2))
 
 # Calcular distância entre os pontos
 d = np.sqrt((x2 - x1)**2 + (y2 - y1)**2)
@@ -36,4 +36,4 @@ print(orbita)
 print(f"Distância entre P1 e P2: {d:.2f} km")
 
 # Plotar a órbita com os pontos
-orbita.plot(points=[(r1, np.degrees(theta1)), (r2, np.degrees(theta2))])
+orbita.plot(points=[(r1, theta1), (r2, theta2)])
