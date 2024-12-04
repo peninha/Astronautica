@@ -1,10 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
+from scipy.optimize import fsolve
+from scipy.integrate import solve_ivp
 class Orbit:
     G = 6.67430e-20  # Constante gravitacional em km^3/kg/s^2
     
-    def __init__(self, mu=None, m1=None, m2=0, a=None, e=None, rp=None, ra=None, h=None, epsilon=None, body1radius=None, body2radius=None):
+    def __init__(self, mu=None, m1=None, m2=0, a=None, e=None, rp=None, ra=None, h=None, body1radius=None, body2radius=None):
         """
         Initializes the Orbit class with primary orbital parameters.
         :param mu: Standard gravitational parameter (km^3/s^2)
@@ -68,7 +69,7 @@ class Orbit:
         self.p = self._calc_p_from_mu_h(self.mu, self._h)
     
     @classmethod
-    def init_from_points(cls, mu=None, m1=None, m2=0, r1=None, theta1=None, r2=None, theta2=None, body1radius=None, body2radius=None):
+    def init_from_2points(cls, mu=None, m1=None, m2=0, r1=None, theta1=None, r2=None, theta2=None, body1radius=None, body2radius=None):
         """
         Creates a new instance of Orbit from two points (r,θ).
         
@@ -81,6 +82,11 @@ class Orbit:
         :param theta2: True anomaly of the second point (degrees)
         :return: New instance of Orbit
         """
+        if mu is None and m1 is not None:
+            mu = cls.G * (m1 + m2)
+        if mu is None:
+            raise ValueError("Forneça mu ou m1 (e opcionalmente m2) para calcular mu.")
+        
         # Converter ângulos para radianos
         theta1 = np.radians(theta1)
         theta2 = np.radians(theta2)
@@ -89,12 +95,6 @@ class Orbit:
         e = (r2/r1 - 1) / (np.cos(theta1) - (r2/r1)*np.cos(theta2))
         
         # Calcular h
-        if mu is None and m1 is not None:
-            mu = cls.G * (m1 + m2)
-            
-        if mu is None:
-            raise ValueError("Forneça mu ou m1 (e opcionalmente m2) para calcular mu.")
-            
         h = np.sqrt(mu * r1 * (1 + e * np.cos(theta1)))
         
         # Simplificado para sempre usar mu
@@ -115,13 +115,69 @@ class Orbit:
         """
         if mu is None and m1 is not None:
             mu = cls.G * (m1 + m2)
-
+        if mu is None:
+            raise ValueError("Forneça mu ou m1 (e opcionalmente m2) para calcular mu.")
+        
         gamma = np.radians(gamma)
         vr = v * np.sin(gamma)
         vt = v * np.cos(gamma)
         h = r * vt
         e = np.sqrt(vr**2*h**2/mu**2 + (h**2/(mu*r) - 1)**2)
         return cls(mu=mu, e=e, h=h, body1radius=body1radius, body2radius=body2radius)
+
+    @classmethod
+    def init_from_perifocal_vectors(cls, mu=None, m1=None, m2=0, r_vec=None, v_vec=None, body1radius=None, body2radius=None):
+        """
+        Creates a new instance of Orbit from position and velocity vectors in the perifocal frame of reference.
+
+        :param mu: Standard gravitational parameter (km³/s²)
+        :param m1: Mass of the primary body (kg)
+        :param m2: Mass of the secondary body (kg), default is 0
+        :param r_vec: Position vector in the perifocal frame of reference (km)
+        :param v_vec: Velocity vector in the perifocal frame of reference (km/s)
+        """
+        if mu is None and m1 is not None:
+            mu = cls.G * (m1 + m2)
+        if mu is None:
+            raise ValueError("Forneça mu ou m1 (e opcionalmente m2) para calcular mu.")
+        
+        h_vec = np.cross(r_vec, v_vec)
+        h = np.linalg.norm(h_vec)
+        theta = np.arctan2(r_vec[1], r_vec[0])
+        e = (h**2 / (mu * np.linalg.norm(r_vec)) - 1)/np.cos(theta)
+        return cls(mu=mu, e=e, h=h, body1radius=body1radius, body2radius=body2radius)
+    
+    @classmethod
+    def init_from_r_vec_v_vec(cls, mu=None, m1=None, m2=0, r_vec=None, v_vec=None, body1radius=None, body2radius=None):
+        """
+        Given a position and velocity vectors represented in some inertial frame of reference
+        centered in the primary body, creates a new instance of Orbit.
+
+        :param mu: Standard gravitational parameter (km³/s²)
+        :param m1: Mass of the primary body (kg)
+        :param m2: Mass of the secondary body (kg), default is 0
+        :param r_vec: Position vector in the inertial frame of reference (km)
+        :param v_vec: Velocity vector in the inertial frame of reference (km/s)
+        """
+        if mu is None and m1 is not None:
+            mu = cls.G * (m1 + m2)
+        if mu is None:
+            raise ValueError("Forneça mu ou m1 (e opcionalmente m2) para calcular mu.")
+        
+        r_vec_0 = r_vec
+        v_vec_0 = v_vec
+        r0 = np.linalg.norm(r_vec_0)
+        vr0 = np.dot(r_vec_0, v_vec_0) / r0
+        h = np.linalg.norm(np.cross(r_vec_0, v_vec_0))
+
+        #f, g, f_dot, g_dot = cls.lagrange_coefficients(r_vec_0, v_vec_0)
+        #delta_theta = 120
+        #r = f(delta_theta)*r_vec_0 + g(delta_theta)*v_vec_0
+        #v = f_dot(delta_theta)*r_vec_0 + g_dot(delta_theta)*v_vec_0
+
+        e = np.sqrt(vr0**2 * h**2 / mu**2 + (h**2 / (mu * r0) - 1)**2)
+        rp = h**2 / (mu * (1 + e))
+        return cls(mu=mu, e=e, h=h, rp=rp, body1radius=body1radius, body2radius=body2radius)
 
     ############# Calculations #############
 
@@ -176,6 +232,8 @@ class Orbit:
         Note: For hyperbolic orbits (e > 1), 'ra' must be a negative value, 
         which will result in a negative distance.
         """
+        if ra == float('inf'):
+            return float('inf')
         return (rp + ra) / 2
 
     #####   e   #####
@@ -378,6 +436,55 @@ class Orbit:
         Calculates the aiming radius.
         """
         return self.b
+    
+    def r_vec_perifocal(self, theta):
+        """
+        Calculates the position vector in the perifocal frame of reference.
+        """
+        theta = np.radians(theta)
+        return self._h**2 / (self.mu * (1 + self._e*np.cos(theta))) * np.array([np.cos(theta), np.sin(theta), 0])
+    
+    def v_vec_perifocal(self, theta):
+        """
+        Calculates the velocity vector in the perifocal frame of reference.
+        """
+        theta = np.radians(theta)
+        return self.mu / self._h * np.array([-np.sin(theta), self._e + np.cos(theta), 0])
+
+    def lagrange_coefficients(self, r_vec_0, v_vec_0):
+        """
+        Calcula e retorna as funções dos coeficientes de Lagrange.
+        """
+        r0 = np.linalg.norm(r_vec_0)
+        v0 = np.linalg.norm(v_vec_0)
+        h = np.linalg.norm(np.cross(r_vec_0, v_vec_0))
+        vr0 = np.dot(r_vec_0, v_vec_0) / r0
+
+        def r_func(delta_theta):
+            delta_theta = np.radians(delta_theta)
+            return h**2 / (self.mu * (1 + (h**2/(self.mu*r0) - 1)*np.cos(delta_theta) - h*vr0/self.mu * np.sin(delta_theta)))
+
+        def f(delta_theta):
+            delta_theta = np.radians(delta_theta)
+            r = r_func(delta_theta)
+            return 1 - self.mu*r/h**2 * (1 - np.cos(delta_theta))
+
+        def g(delta_theta):
+            delta_theta = np.radians(delta_theta)
+            r = r_func(delta_theta)
+            return r*r0/h * np.sin(delta_theta)
+
+        def f_dot(delta_theta):
+            delta_theta = np.radians(delta_theta)
+            r = r_func(delta_theta)
+            return self.mu/h * (1 - np.cos(delta_theta))/np.sin(delta_theta) * (self.mu/h**2 * (1 - np.cos(delta_theta)) - 1/r0 - 1/r)
+
+        def g_dot(delta_theta):
+            delta_theta = np.radians(delta_theta)
+            r = r_func(delta_theta)
+            return 1 - self.mu*r0/h**2 * (1 - np.cos(delta_theta))
+
+        return f, g, f_dot, g_dot
 
     @property
     def a(self):
@@ -476,4 +583,306 @@ class Orbit:
         plt.title('Órbita')
         plt.legend()
 
+class Lagrange_mechanics:
+    """
+    Class to calculate the position and velocity vectors after a given true anomaly change using Lagrange coefficients.
+    """
+    G = 6.67430e-20  # Constante gravitacional em km^3/kg/s^2
+    
+    def __init__(self, mu=None, m1=None, m2=0, r_vec_0=None, v_vec_0=None, delta_theta=None, body1radius=None, body2radius=None):
+        if mu is not None:
+            self.mu = mu  # Gravitational parameter
+        elif m1 is not None:
+            self.mu = self._calc_mu(m1, m2)
+        else:
+            raise ValueError("Provide either mu or m1 (and optionally m2) to calculate mu.")
+        
+        self.body1radius = body1radius
+        self.body2radius = body2radius
+
+        if r_vec_0 is not None and v_vec_0 is not None and delta_theta is not None:
+            self.r_vec_0 = r_vec_0
+            self.v_vec_0 = v_vec_0
+            self.delta_theta = delta_theta
+        else:
+            raise ValueError("Provide r_vec_0, v_vec_0 and delta_theta.")
+        
+        self.f, self.g, self.f_dot, self.g_dot = self.calc_lagrange_coefficients(self.r_vec_0, self.v_vec_0, self.delta_theta)
+        self.r_vec, self.v_vec = self.r_vec_v_vec_after_delta_theta(self.delta_theta)
+        self._h = np.linalg.norm(np.cross(self.r_vec_0, self.v_vec_0))
+        r0 = np.linalg.norm(self.r_vec_0)
+        vr0 = np.dot(self.r_vec_0, self.v_vec_0) / r0
+        self._e = np.sqrt(vr0**2 * self._h**2 / self.mu**2 + (self._h**2 / (self.mu * r0) - 1)**2)
+        self._rp = self._h**2 / (self.mu * (1 + self._e))
+        if self._e == 1:
+            self._ra = float('inf')
+        else:
+            self._ra = self._h**2 / (self.mu * (1 - self._e))
+        
+        if self._ra == float('inf'):
+            self._a = float('inf')
+        else:
+            self._a = (self._rp + self._ra) / 2
+        
+        if self._e > 1:
+            self.theta_inf = np.degrees(np.arccos(-1/self._e))
+        
+        if vr0 < 0:
+            self.theta0 = self.theta_at_r(r0)[1]
+        else:
+            self.theta0 = self.theta_at_r(r0)[0]
+        self.r0 = r0
+        r = np.linalg.norm(self.r_vec)
+        vr = np.dot(self.r_vec, self.v_vec) / r
+        if vr < 0:
+            self.theta = self.theta_at_r(r)[1]
+        else:
+            self.theta = self.theta_at_r(r)[0]
+        self.r = r
+
+    ############# Calculations #############
+
+    #####   mu   #####
+    def _calc_mu(self, m1, m2=0):
+        """
+        Calculates the gravitational parameter mu based on the masses of two bodies.
+        
+        :param m1: Mass of the primary body (kg)
+        :param m2: Mass of the secondary body, default is 0 (kg)
+        """
+        return self.G * (m1 + m2)
+
+    #####   Lagrange coefficients   #####
+    def calc_lagrange_coefficients(self, r_vec_0, v_vec_0, delta_theta):
+        """
+        Calculates the Lagrange coefficients.
+        """
+        delta_theta = np.radians(delta_theta)
+
+        r0 = np.linalg.norm(r_vec_0)
+        v0 = np.linalg.norm(v_vec_0)
+        h = np.linalg.norm(np.cross(r_vec_0, v_vec_0))
+        vr0 = np.dot(r_vec_0, v_vec_0) / r0
+        r = h**2 / (self.mu * (1 + (h**2/(self.mu*r0) - 1)*np.cos(delta_theta) - h*vr0/self.mu * np.sin(delta_theta)))
+        f = 1 - self.mu*r/h**2 * (1 - np.cos(delta_theta))
+        g = r*r0/h * np.sin(delta_theta)
+        f_dot = self.mu/h * (1 - np.cos(delta_theta))/np.sin(delta_theta) * (self.mu/h**2 * (1 - np.cos(delta_theta)) - 1/r0 - 1/r)
+        g_dot = 1 - self.mu*r0/h**2 * (1 - np.cos(delta_theta))
+        return f, g, f_dot, g_dot
+    
+    def r_vec_v_vec_after_delta_theta(self, delta_theta):
+        """
+        Calculates the position and velocity vectors after a given true anomaly change.
+        """
+        r_vec = self.f*self.r_vec_0 + self.g*self.v_vec_0
+        v_vec = self.f_dot*self.r_vec_0 + self.g_dot*self.v_vec_0
+        return r_vec, v_vec
+
+    def theta_at_r(self, r):
+        """
+        Calculates the true anomaly at a given distance from the primary body center.
+        Returns both possible values as a list, with angles between 0 and 360 degrees.
+        """
+        theta1 = np.arccos((self._h**2 / (self.mu * r) - 1) / self._e)
+        theta2 = 2*np.pi - theta1
+        return [np.degrees(theta1), np.degrees(theta2)]
+
+    def r_at_theta(self, theta):
+        """
+        Calculates the distance from the primary body center to a point on the orbit at a given true anomaly.
+        """
+        theta = np.radians(theta)
+        return self._h**2 / (self.mu) * 1/(1 + self._e * np.cos(theta))
+
+    def plot(self, points=None):
+        """
+        Plots the orbit with optional points.
+        """
+        # Criar array de anomalia verdadeira
+        if self._e == 1:
+            theta = np.linspace(-120, 120, 1000)
+        elif self._e > 1:
+            #theta = np.linspace(np.radians(-self.theta_inf()), np.radians(self.theta_inf()), 1000)
+            epsilon = 15
+            theta = np.linspace(-self.theta_inf + epsilon, self.theta_inf - epsilon, 1000)
+        else:
+            theta = np.linspace(0, 360, 1000)
+        
+        # Calcular raio para cada ângulo
+        r = self.r_at_theta(theta)
+        
+        # Converter para coordenadas cartesianas
+        x = r * np.cos(np.radians(theta))
+        y = r * np.sin(np.radians(theta))
+        
+        # Criar o plot
+        plt.figure(figsize=(8, 8))
+        plt.plot(x, y, 'b-', label='Órbita')
+        
+        # Plotar o corpo central com o raio correto se fornecido
+        if self.body1radius is not None:
+            circle = plt.Circle((0, 0), self.body1radius, color='r', alpha=0.3, label='Central Body')
+            plt.gca().add_patch(circle)
+        else:
+            plt.plot(0, 0, 'ro', label='Corpo Central')
+            
+        # Plotar o corpo secundário com o raio correto se fornecido
+        if self.body2radius is not None:
+            circle2 = plt.Circle((self.a, 0), self.body2radius, color='g', alpha=0.3, label='Orbiting Body')
+            plt.gca().add_patch(circle2)
+        
+        # Plotar pontos adicionais se fornecidos
+        if points is not None:
+            for point in points:
+                r, theta = point
+                x = r * np.cos(np.radians(theta))
+                y = r * np.sin(np.radians(theta))
+                plt.plot(x, y, 'go')
+        
+        plt.grid(True)
+        plt.axis('equal')
+        plt.xlabel('x (km)')
+        plt.ylabel('y (km)')
+        plt.title('Órbita')
+        plt.legend()
+
+class Three_body_restricted:
+    """
+    Class to calculate the position and velocity vectors of a body in a three-body restricted problem.
+    Frame of reference: noninertial, rotating system, with origin at the center of mass and X axis towards m2.
+    Note: Valid only for the case where the two main bodies (m1 and m2) are in circular orbit around each other.
+    """
+    G = 6.67430e-20  # Constante gravitacional em km^3/kg/s^2
+
+    def __init__(self, m1, m2, r12, body1radius=None, body2radius=None):
+        """
+        Initializes the Three_body_restricted class.
+
+        :param m1: Mass of the primary body (kg)
+        :param m2: Mass of the secondary body (kg)
+        :param r12: Distance between the two bodies (km)
+        :param body1radius: Radius of the primary body (km), default is None
+        :param body2radius: Radius of the secondary body (km), default is None
+        """
+        self.m1 = m1
+        self.m2 = m2
+        self.mu1 = self.G * m1
+        self.mu2 = self.G * m2
+        self.pi1 = m1/(m1 + m2)
+        self.pi2 = m2/(m1 + m2)
+        self.mu = self.mu1 + self.mu2
+        self.r12 = r12
+        self.body1radius = body1radius
+        self.body2radius = body2radius
+        self.omega = np.sqrt(self.mu/self.r12**3)
+
+    def lagrange_points(self, plot=False):
+        """
+        Calculates the Lagrange points.
+        """
+        
+        #### L4 and L5 ####
+        x = self.r12/2 - self.pi2 * self.r12
+        y = np.sqrt(3)/2 * self.r12
+        z = 0
+        L4 = np.array([x, y, z])
+        L5 = np.array([x, -y, z])
+
+        #### L1, L2 and L3 ####
+        def f(csi, pi2):
+            return (1 - pi2) * (csi + pi2)/np.abs(csi + pi2)**3 + pi2 * (csi + pi2 - 1)/np.abs(csi + pi2 -1)**3 - csi
+        
+        sign = 1 if self.m1 >= self.m2 else -1
+        L1_csi0 = (self.pi1 - self.pi2)
+        L2_csi0 = (1 + min(self.pi1, self.pi2)) * sign
+        L3_csi0 = (1 + min(self.pi1, self.pi2)) * -sign
+        L1_csi = fsolve(f, L1_csi0, args=(self.pi2))[0]
+        L1 = np.array([L1_csi * self.r12, 0, 0])
+        L2_csi = fsolve(f, L2_csi0, args=(self.pi2))[0]
+        L2 = np.array([L2_csi * self.r12, 0, 0])
+        L3_csi = fsolve(f, L3_csi0, args=(self.pi2))[0]
+        L3 = np.array([L3_csi * self.r12, 0, 0])
+
+        print(L1_csi0, L1_csi)
+        print(L2_csi0, L2_csi)
+        print(L3_csi0, L3_csi)
+
+        if plot:
+            self.plot(points=[L1, L2, L3, L4, L5])
+        
+        return L1, L2, L3, L4, L5
+
+    def jacobi_constant(self, r_vec, v):
+        """
+        Calculates the Jacobi constant.
+        """
+        r1 = np.linalg.norm(np.array([r_vec[0]+self.pi2*self.r12, r_vec[1], r_vec[2]]))
+        r2 = np.linalg.norm(np.array([r_vec[0]-self.pi1*self.r12, r_vec[1], r_vec[2]]))
+        C = (v**2 - self.omega**2 * (r_vec[0]**2 + r_vec[1]**2) - 2*self.mu1/r1 - 2*self.mu2/r2)/2
+        return C
+    
+    def v_for_C(self, r_vec, C):
+        """
+        Calculates the velocity vector from some specific Jacobi constant.
+        """
+        r1 = np.linalg.norm(np.array([r_vec[0]+self.pi2*self.r12, r_vec[1], r_vec[2]]))
+        r2 = np.linalg.norm(np.array([r_vec[0]-self.pi1*self.r12, r_vec[1], r_vec[2]]))
+        v = np.sqrt(2*C + self.omega**2 * (r_vec[0]**2 + r_vec[1]**2) + 2*self.mu1/r1 + 2*self.mu2/r2)
+        return v
+
+    def trajectory(self, r_vec_0, v_vec_0, t_span, t_eval=None, method='RK45', plot=False):
+        """
+        Simulates the trajectory of the spacecraft.
+        """
+        def f(t, y):
+            y1 = y[0] # x
+            y2 = y[1] # y
+            y3 = y[2] # z
+
+            y4 = y[3] # x'
+            y5 = y[4] # y'
+            y6 = y[5] # z'
+            
+            r1 = np.sqrt((y1 + self.pi2*self.r12)**2 + y2**2 + y3**2)
+            r2 = np.sqrt((y1 - self.pi1*self.r12)**2 + y2**2 + y3**2)
+
+            y1_dot = y4
+            y2_dot = y5
+            y3_dot = y6
+            y4_dot = 2*self.omega*y5 + self.omega**2*y1 - self.mu1/r1**3 * (y1 + self.pi2*self.r12) - self.mu2/r2**3 * (y1 - self.pi1*self.r12)
+            y5_dot = -2*self.omega*y4 + self.omega**2*y2 - self.mu1/r1**3 * y2 - self.mu2/r2**3 * y2
+            y6_dot = - self.mu1/r1**3 * y3 - self.mu2/r2**3 * y3
+            return np.concatenate(((y1_dot, y2_dot, y3_dot), (y4_dot, y5_dot, y6_dot)))
+        
+        sol = solve_ivp(f, t_span, np.concatenate((r_vec_0, v_vec_0)), t_eval=t_eval, method=method)
+        if plot:
+            self.plot(points=sol.y[:3].T)
+        return sol
+
+    def plot(self, points):
+            """
+            Plots the Lagrange points.
+            """ 
+            plt.figure(figsize=(10, 10))
+            
+            if self.body1radius is not None:
+                circle = plt.Circle((-self.pi2*self.r12, 0), self.body1radius, color='b', alpha=0.3, label='Corpo Primário')
+                plt.gca().add_patch(circle)
+            else:
+                plt.plot(-self.pi2*self.r12, 0, 'bo', label='Corpo Primário')
+            if self.body2radius is not None:
+                circle = plt.Circle(((1-self.pi2)*self.r12, 0), self.body2radius, color='r', alpha=0.3, label='Corpo Secundário')
+                plt.gca().add_patch(circle)
+            else:
+                plt.plot((1-self.pi2)*self.r12, 0, 'ro', label='Corpo Secundário')
+            
+            for point in points:
+                plt.plot(point[0], point[1], 'k.', markersize=1)
+            
+            plt.grid(True)
+            plt.axis('equal')
+            plt.xlabel('x (km)')
+            plt.ylabel('y (km)') 
+            plt.legend()
+            plt.show()
         
