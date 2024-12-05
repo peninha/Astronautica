@@ -1,7 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import fsolve
 from scipy.integrate import solve_ivp
+from scipy.optimize import root_scalar, fsolve
+
 class Orbit:
     G = 6.67430e-20  # Constante gravitacional em km^3/kg/s^2
     
@@ -148,7 +149,7 @@ class Orbit:
         return cls(mu=mu, e=e, h=h, body1radius=body1radius, body2radius=body2radius)
     
     @classmethod
-    def init_from_r_vec_v_vec(cls, mu=None, m1=None, m2=0, r_vec=None, v_vec=None, body1radius=None, body2radius=None):
+    def init_from_r_vec_v_vec(cls, mu=None, m1=None, m2=0, r_vec=None, v_vec=None, name=None, body1radius=None, body2radius=None):
         """
         Given a position and velocity vectors represented in some inertial frame of reference
         centered in the primary body, creates a new instance of Orbit.
@@ -158,6 +159,7 @@ class Orbit:
         :param m2: Mass of the secondary body (kg), default is 0
         :param r_vec: Position vector in the inertial frame of reference (km)
         :param v_vec: Velocity vector in the inertial frame of reference (km/s)
+        :param name: Name of the body
         """
         if mu is None and m1 is not None:
             mu = cls.G * (m1 + m2)
@@ -177,8 +179,31 @@ class Orbit:
 
         e = np.sqrt(vr0**2 * h**2 / mu**2 + (h**2 / (mu * r0) - 1)**2)
         rp = h**2 / (mu * (1 + e))
-        return cls(mu=mu, e=e, h=h, rp=rp, body1radius=body1radius, body2radius=body2radius)
+        
+        # Criar a instância da órbita
+        orbit_instance = cls(mu=mu, e=e, h=h, rp=rp, body1radius=body1radius, body2radius=body2radius)
+        
+        # Adicionar o corpo usando o método add_body
+        theta = np.degrees(np.arctan2(r_vec[1], r_vec[0]))  # Calcula a anomalia verdadeira
+        orbit_instance.add_body(name=name, theta=theta)
+        
+        return orbit_instance
 
+    def add_position(self, theta, name=None):
+        """
+        Adds an orbital position to the orbit.
+        """
+        r = self.r_at_theta(theta)
+        v = self.v_at_r(r)
+        self.positions = getattr(self, 'positions', [])
+        position = {
+            'nome': name,
+            'r': r,
+            'v': v, 
+            'theta': theta
+        }
+        self.positions.append(position)
+        
     ############# Calculations #############
 
     #####   mu   #####
@@ -316,6 +341,7 @@ class Orbit:
     def _update(self, param):
         """
         Recalculates the orbital parameters based on the changed parameter.
+        TODO: test for each parameter
         """
         if param in ['rp', 'ra']:
             self._a = self._calc_a_from_rp_ra(self._rp, self._ra)
@@ -362,12 +388,23 @@ class Orbit:
         else:
             return "Invalid"
 
-    def r_mean(self):
+    def theta_averaged_r(self):
         """
-        Calculates the mean radius using periapsis and apoapsis distances.
-        Note: For hyperbolic orbits (e > 1), 'ra' must be a negative value.
+        Calculates the theta-averaged radius using periapsis and apoapsis distances.
+        Note: Can't be used for parabolic or hyperbolic orbits.
         """
+        if self._e >= 1:
+            raise ValueError("Can't calculate theta-averaged radius for parabolic or hyperbolic orbits.")
         return (self._rp * self._ra)**(1/2)
+    
+    def time_averaged_r(self):
+        """
+        Calculates the time-averaged radius using semi-major axis and eccentricity.
+        Note: Can't be used for parabolic or hyperbolic orbits.
+        """
+        if self._e >= 1:
+            raise ValueError("Can't calculate time-averaged radius for parabolic or hyperbolic orbits.")
+        return self._a * (1 + self._e**2/2)
 
     def v_at_r(self, r):
         """
@@ -376,7 +413,10 @@ class Orbit:
         :param r: Distance from the primary body center to the point (km)
         :return: Velocity at the point (km/s)
         """
-        return np.sqrt(self.mu * (2 / r - 1 / self._a))
+        if self._e == 1:
+            return np.sqrt(self.mu * 2 / r)
+        else:
+            return np.sqrt(self.mu * (2 / r - 1 / self._a))
     
     def r_at_theta(self, theta):
         """
@@ -450,6 +490,134 @@ class Orbit:
         """
         theta = np.radians(theta)
         return self.mu / self._h * np.array([-np.sin(theta), self._e + np.cos(theta), 0])
+
+    def E_from_theta(self, theta):
+        """
+        Calculates the eccentric anomaly using the true anomaly.
+        """
+        theta = np.radians(theta)
+        if self._e < 1:
+            return np.degrees(2 * np.arctan(np.sqrt((1 - self._e) / (1 + self._e)) * np.tan(theta/2)))
+        elif self._e > 1:
+            return np.degrees(2 * np.arctanh(np.sqrt((self._e - 1) / (self._e + 1)) * np.tan(theta/2)))
+        else:
+            raise ValueError("Can't calculate eccentric anomaly from true anomaly for parabolic orbits.")
+
+    def M_from_E(self, E):
+        """
+        Calculates the mean anomaly using the eccentric anomaly.
+        """
+        E = np.radians(E)
+        if self._e < 1:
+            return np.degrees(E - self._e * np.sin(E))
+        elif self._e > 1:
+            return np.degrees(self._e * np.sinh(E) - E)
+        else:
+            raise ValueError("Can't calculate mean anomaly from eccentric anomaly for parabolic orbits.")
+    
+    def M_from_theta(self, theta):
+        """
+        Calculates the mean anomaly using the true anomaly.
+        """
+        if self._e > 1 or self._e < 1:
+            raise ValueError("Can't calculate mean anomaly from true anomaly for elliptical or hyperbolic orbits.")
+        
+        theta = np.radians(theta)
+        return np.degrees(1/6 * np.tan(theta/2)**3 + 1/2 * np.tan(theta/2))
+    
+    def t_from_M(self, M):
+        """
+        Calculates the time using the mean anomaly.
+        """
+        M = np.radians(M)
+        if self._e < 1:
+            return M * self.T / (2 * np.pi)
+        elif self._e == 1:
+            return M * self._h**3 / self.mu**2
+        else:
+            return M * self._h**3 / (self.mu**2 * (self._e**2 - 1)**(3/2))
+    
+    def t_from_theta(self, theta):
+        """
+        Calculates the time using the true anomaly.
+        """
+        if self._e < 1 or self._e > 1: # elliptical or hyperbolic
+            E = self.E_from_theta(theta)
+            M = self.M_from_E(E)
+            return self.t_from_M(M)
+        else: # parabolic
+            M = self.M_from_theta(theta)
+            return self.t_from_M(M)
+
+    def M_from_t(self, t):
+        """
+        Calculates the mean anomaly using the time.
+        """
+        if self._e < 1:
+            return np.degrees(2 * np.pi * t / self.T)
+        elif self._e == 1:
+            return np.degrees(self.mu**2 * t/ self._h**3)
+        else:
+            return np.degrees(self.mu**2 / self._h**3 * (self._e**2 - 1)**(3/2) * t)
+
+    def E_from_M(self, M):
+        """
+        Calculates the eccentric anomaly using the mean anomaly.
+        """
+        if self._e == 1:
+            raise ValueError("Can't calculate eccentric anomaly for parabolic orbits.")
+        
+        M = np.radians(M)
+        if self._e < 1:
+            if M < np.pi:
+                E0 = M + self._e/2
+            else:
+                E0 = M - self._e/2
+        else:
+            E0 = M
+
+        def f(E, M):
+            if self._e < 1:
+                return E - self._e * np.sin(E) - M
+            else:
+                return self._e * np.sinh(E) - E - M
+
+        def f_prime(E, M):
+            if self._e < 1:
+                return 1 - self._e * np.cos(E)
+            else:
+                return self._e * np.cosh(E) - 1
+        
+        E = root_scalar(f, fprime=f_prime, x0=E0, args=(M), method='newton').root
+
+        return np.degrees(E)
+
+    def theta_from_E(self, E):
+        """
+        Calculates the true anomaly using the eccentric anomaly.
+        """
+        E = np.radians(E)
+        if self._e < 1:
+            return np.degrees(2 * np.arctan(np.sqrt((1 + self._e) / (1 - self._e)) * np.tan(E/2)))
+        elif self._e > 1:
+            return np.degrees(2 * np.arctan(np.sqrt((self._e + 1) / (self._e - 1)) * np.tanh(E/2)))
+        else:
+            raise ValueError("Can't calculate true anomaly from eccentric anomaly for parabolic orbits.")
+
+    def theta_from_t(self, t):
+        """
+        Calculates the true anomaly using the time.
+        """
+        if self._e < 1 or self._e > 1: # elliptical or hyperbolic
+            M = self.M_from_t(t)
+            E = self.E_from_M(M)
+            return np.mod(self.theta_from_E(E), 360)
+        else: # parabolic
+            M = self.M_from_t(t)
+            M = np.radians(M)
+            z = (3*M + np.sqrt(1 + 9*M**2))**(1/3)
+            theta = np.degrees(2 * np.arctan(z - 1/z))
+            return np.mod(theta, 360)
 
     def lagrange_coefficients(self, r_vec_0, v_vec_0):
         """
@@ -531,17 +699,35 @@ class Orbit:
         self._h = value
         self._update('h')
 
-    def plot(self, points=None):
+    def plot(self, points=None, plot_positions=False):
         """
         Plots the orbit with optional points.
+
+        :param points: List of points to plot (r, theta)
+        :param plot_positions: Boolean to plot the already added orbital positions
         """
         # Criar array de anomalia verdadeira
         if self._e == 1:
-            theta = np.linspace(-120, 120, 1000)
+            theta_min = -120
+            theta_max = 120
+            if plot_positions:
+                for pos in self.positions:
+                    if pos['theta'] < theta_min:
+                        theta_min = pos['theta']
+                    if pos['theta'] > theta_max:
+                        theta_max = pos['theta']
+            theta = np.linspace(theta_min, theta_max, 1000)
         elif self._e > 1:
-            #theta = np.linspace(np.radians(-self.theta_inf()), np.radians(self.theta_inf()), 1000)
             epsilon = 15
-            theta = np.linspace(-self.theta_inf() + epsilon, self.theta_inf() - epsilon, 1000)
+            theta_min = -self.theta_inf() + epsilon
+            theta_max = self.theta_inf() - epsilon
+            if plot_positions:
+                for pos in self.positions:
+                    if pos['theta'] < theta_min:
+                        theta_min = pos['theta']
+                    if pos['theta'] > theta_max:
+                        theta_max = pos['theta']
+            theta = np.linspace(theta_min, theta_max, 1000)
         else:
             theta = np.linspace(0, 360, 1000)
         
@@ -563,19 +749,31 @@ class Orbit:
         else:
             plt.plot(0, 0, 'ro', label='Corpo Central')
             
-        # Plotar o corpo secundário com o raio correto se fornecido
-        if self.body2radius is not None:
-            circle2 = plt.Circle((self.a, 0), self.body2radius, color='g', alpha=0.3, label='Orbiting Body')
-            plt.gca().add_patch(circle2)
-        
         # Plotar pontos adicionais se fornecidos
         if points is not None:
             for point in points:
                 r, theta = point
-                x = r * np.cos(np.radians(theta))
-                y = r * np.sin(np.radians(theta))
+                theta = np.radians(theta)
+                x = r * np.cos(theta)
+                y = r * np.sin(theta)
                 plt.plot(x, y, 'go')
         
+        if plot_positions:
+            # Lista de cores para os pontos
+            cores = ['red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan', 'blue']
+            for i, position in enumerate(self.positions):
+                theta = np.radians(position['theta'])
+                x = position['r'] * np.cos(theta)
+                y = position['r'] * np.sin(theta)
+                # Plotar o corpo 2 com o raio correto se fornecido
+                label = position.get('nome', f'Ponto {i+1}')
+                cor = cores[i % len(cores)]  # Usa o módulo para reciclar cores se houver mais pontos que cores
+                if self.body2radius is not None:
+                    circle2 = plt.Circle((x, y), self.body2radius, color=cor, alpha=0.3, label=label)
+                    plt.gca().add_patch(circle2)
+                else:
+                    plt.plot(x, y, 'o', color=cor, label=label)
+
         plt.grid(True)
         plt.axis('equal')
         plt.xlabel('x (km)')
@@ -877,7 +1075,7 @@ class Three_body_restricted:
                 plt.plot((1-self.pi2)*self.r12, 0, 'ro', label='Corpo Secundário')
             
             for point in points:
-                plt.plot(point[0], point[1], 'k.', markersize=1)
+                plt.plot(point[0], point[1], 'k.', markersize=3)
             
             plt.grid(True)
             plt.axis('equal')
