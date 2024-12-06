@@ -1,6 +1,4 @@
 from orbitalmechanics import Orbit
-import numpy as np
-from scipy.optimize import fsolve
 
 """
 A geocentric trajectory has a perigee velocity of 15 km/s and a perigee altitude of 300 km. Find

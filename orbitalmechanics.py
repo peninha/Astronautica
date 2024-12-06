@@ -3,9 +3,23 @@ import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 from scipy.optimize import root_scalar, fsolve
 
-class Orbit:
+class OrbitalBase:
+    """
+    Base class for all orbital mechanics classes.
+    """
     G = 6.67430e-20  # Constante gravitacional em km^3/kg/s^2
-    
+
+    #####   mu   #####
+    def _calc_mu(self, m1, m2=0):
+        """
+        Calculates the gravitational parameter mu based on the masses of two bodies.
+        
+        :param m1: Mass of the primary body (kg)
+        :param m2: Mass of the secondary body, default is 0 (kg)
+        """
+        return self.G * (m1 + m2)
+
+class Orbit(OrbitalBase):
     def __init__(self, mu=None, m1=None, m2=0, a=None, e=None, rp=None, ra=None, h=None, body1radius=None, body2radius=None):
         """
         Initializes the Orbit class with primary orbital parameters.
@@ -189,6 +203,38 @@ class Orbit:
         
         return orbit_instance
 
+    @classmethod
+    def init_from_r_v_theta(cls, mu=None, m1=None, m2=0, r=None, v=None, theta=None, body1radius=None, body2radius=None):
+        """
+        Creates a new instance of Orbit from distance, velocity and true anomaly.
+
+        :param mu: Standard gravitational parameter (km³/s²)
+        :param m1: Mass of the primary body (kg)
+        :param m2: Mass of the secondary body (kg), default is 0
+        :param r: Distance from the primary body center to the point (km)
+        :param v: Velocity at the point (km/s)
+        :param theta: True anomaly (degrees)
+        """
+        if mu is None and m1 is not None:
+            mu = cls.G * (m1 + m2)
+        if mu is None:
+            raise ValueError("Forneça mu ou m1 (e opcionalmente m2) para calcular mu.")
+        
+        theta = np.radians(theta)
+
+        # solve second degree equation for eccentricity
+        u = r*v**2/mu
+        c1 = 1
+        c2 = np.cos(theta)*(2 - u)
+        c3 = 1 - u
+        delta = c2**2 - 4*c1*c3
+        e = (-c2 + np.sqrt(delta))/(2*c1)
+                
+        # calculate specific angular momentum
+        h = np.sqrt(mu * r * (1 + e*np.cos(theta)))
+
+        return cls(mu=mu, e=e, h=h, body1radius=body1radius, body2radius=body2radius)
+
     def add_position(self, theta, name=None):
         """
         Adds an orbital position to the orbit.
@@ -205,17 +251,6 @@ class Orbit:
         self.positions.append(position)
         
     ############# Calculations #############
-
-    #####   mu   #####
-    def _calc_mu(self, m1, m2=0):
-        """
-        Calculates the gravitational parameter mu based on the masses of two bodies.
-        
-        :param m1: Mass of the primary body (kg)
-        :param m2: Mass of the secondary body, default is 0 (kg)
-        """
-        return self.G * (m1 + m2)
-  
     #####   rp   #####
     def _calc_rp_from_a_e(self, a, e):
         """
@@ -490,6 +525,14 @@ class Orbit:
         """
         theta = np.radians(theta)
         return self.mu / self._h * np.array([-np.sin(theta), self._e + np.cos(theta), 0])
+    
+    def state_perifocal(self, theta):
+        """
+        Calculates the state vector in the perifocal frame of reference.
+        """
+        r = self.r_vec_perifocal(theta)
+        v = self.v_vec_perifocal(theta)
+        return r, v
 
     def E_from_theta(self, theta):
         """
@@ -780,13 +823,22 @@ class Orbit:
         plt.ylabel('y (km)')
         plt.title('Órbita')
         plt.legend()
+    
+    ############# Geocentric Equatorial Frame #############
+    @classmethod
+    def ra_dec_from_r_vec(cls, r_vec):
+        """
+        Calculates the right ascension and declination from the position vector.
+        """
+        r = np.linalg.norm(r_vec)
+        ra = np.mod(np.degrees(np.arctan2(r_vec[1], r_vec[0])), 360)
+        dec = np.mod(np.degrees(np.arcsin(r_vec[2]/r)), 360)
+        return ra, dec
 
-class Lagrange_mechanics:
+class Lagrange_mechanics(OrbitalBase):
     """
     Class to calculate the position and velocity vectors after a given true anomaly change using Lagrange coefficients.
     """
-    G = 6.67430e-20  # Constante gravitacional em km^3/kg/s^2
-    
     def __init__(self, mu=None, m1=None, m2=0, r_vec_0=None, v_vec_0=None, delta_theta=None, body1radius=None, body2radius=None):
         if mu is not None:
             self.mu = mu  # Gravitational parameter
@@ -839,17 +891,6 @@ class Lagrange_mechanics:
         self.r = r
 
     ############# Calculations #############
-
-    #####   mu   #####
-    def _calc_mu(self, m1, m2=0):
-        """
-        Calculates the gravitational parameter mu based on the masses of two bodies.
-        
-        :param m1: Mass of the primary body (kg)
-        :param m2: Mass of the secondary body, default is 0 (kg)
-        """
-        return self.G * (m1 + m2)
-
     #####   Lagrange coefficients   #####
     def calc_lagrange_coefficients(self, r_vec_0, v_vec_0, delta_theta):
         """
@@ -944,13 +985,12 @@ class Lagrange_mechanics:
         plt.title('Órbita')
         plt.legend()
 
-class Three_body_restricted:
+class Three_body_restricted(OrbitalBase):
     """
     Class to calculate the position and velocity vectors of a body in a three-body restricted problem.
     Frame of reference: noninertial, rotating system, with origin at the center of mass and X axis towards m2.
     Note: Valid only for the case where the two main bodies (m1 and m2) are in circular orbit around each other.
     """
-    G = 6.67430e-20  # Constante gravitacional em km^3/kg/s^2
 
     def __init__(self, m1, m2, r12, body1radius=None, body2radius=None):
         """
@@ -1084,3 +1124,110 @@ class Three_body_restricted:
             plt.legend()
             plt.show()
         
+class Trajectory(OrbitalBase):
+    """
+    Class to calculate the trajectory of a spacecraft.
+    """
+    def __init__(self, r_vec_0, v_vec_0, t0=0, mu=None, m1=None, m2=0, body1radius=None, body2radius=None):
+        """
+        Initializes the Trajectory class.
+        
+        In Body-Centric Equatorial Frame.
+        :param mu: Gravitational parameter (km^3/s^2)
+        :param m1: Mass of the primary body (kg)
+        :param m2: Mass of the secondary body (kg), default is 0
+        :param r_vec_0: Initial position vector (km)
+        :param v_vec_0: Initial velocity vector (km/s)
+        :param t0: Initial time (s), default is 0
+        :param body1radius: Radius of the primary body (km), default is None
+        :param body2radius: Radius of the secondary body (km), default is None
+        """
+        self.body1radius = body1radius
+        self.body2radius = body2radius
+
+        if mu is not None:
+            self.mu = mu  # Gravitational parameter
+        elif m1 is not None:
+            self.mu = self._calc_mu(m1, m2)
+        else:
+            raise ValueError("Provide either mu or m1 (and optionally m2) to calculate mu.")
+        
+        self.r_vec_0 = r_vec_0
+        self.v_vec_0 = v_vec_0
+        self.t0 = t0
+
+        self.r0 = np.linalg.norm(r_vec_0)
+        self.v0 = np.linalg.norm(v_vec_0)
+        self.vr0 = np.dot(r_vec_0, v_vec_0) / self.r0
+        self.alpha = 2/self.r0 - self.v0**2/self.mu
+    
+    def S(self, z):
+        """
+        Stumpff function S(z).
+        """
+        if z > 0:
+            return (np.sqrt(z) - np.sin(np.sqrt(z)))/np.sqrt(z)**3
+        elif z < 0:
+            return (np.sinh(np.sqrt(-z)) - np.sqrt(-z))/np.sqrt(-z)**3
+        else: # z = 0
+            return 1/6
+
+    def C(self, z):
+        """
+        Stumpff function C(z).
+        """
+        if z > 0:
+            return (1 - np.cos(np.sqrt(z)))/z
+        elif z < 0:
+            return (np.cosh(np.sqrt(-z)) - 1)/(-z)
+        else: # z = 0
+            return 1/2
+
+    def state_at_time(self, t):
+        """
+        Finds the position and velocity vectors at a given time.
+        """
+        delta_t = t - self.t0
+        Q = self.Q_at_delta_t(delta_t)
+        r_vec, v_vec = self.state_at_Q(Q, delta_t)
+        return r_vec, v_vec
+
+    def Q_at_delta_t(self, delta_t):
+        """
+        Finds the universal anomaly at a given time.
+        """
+        Q0 = np.sqrt(self.mu) * np.abs(self.alpha) * delta_t
+        
+        def f(Q):
+            z = self.alpha * Q**2
+            Q = (self.r0*self.vr0 / np.sqrt(self.mu) * Q**2 * self.C(z) + 
+                    (1 - self.alpha*self.r0) * Q**3 * self.S(z) + 
+                    self.r0 * Q - np.sqrt(self.mu) * delta_t)
+            return Q
+        def f_dot(Q):
+            z = self.alpha * Q**2
+            Q_dot = (self.r0*self.vr0 / np.sqrt(self.mu) * Q * (1 - self.alpha *Q**2*self.S(z)) +
+                    (1 - self.alpha*self.r0) * Q**2 * self.C(z) + self.r0)
+            return Q_dot
+        
+        Q = root_scalar(f, fprime=f_dot, x0=Q0, method='newton').root
+        return Q
+
+    def state_at_Q(self, Q, delta_t):
+        """
+        Finds the position and velocity vectors at a given universal anomaly and delta time.
+        """
+        z = self.alpha * Q**2
+        
+        f = 1 - Q**2/self.r0 * self.C(z)
+        g = delta_t - Q**3/np.sqrt(self.mu) * self.S(z)
+        
+        r_vec = f*self.r_vec_0 + g*self.v_vec_0
+        r = np.linalg.norm(r_vec)
+
+        f_dot = -np.sqrt(self.mu)/(r*self.r0) * (self.alpha*Q**3 * self.S(z) - Q)
+        g_dot = 1 - Q**2/r * self.C(z)
+        v_vec = f_dot*self.r_vec_0 + g_dot*self.v_vec_0
+
+        return r_vec, v_vec
+    
