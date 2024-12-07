@@ -14,8 +14,8 @@ theta0 = 0 # [°]
 theta1 = 120 # [°]
 
 orbita = Orbit(m1=M_earth, rp=rp, ra=ra, body1radius=Earth_radius)
-orbita.add_position(name="sonda0", theta=theta0)
-orbita.add_position(name="sonda1", theta=theta1)
-t = orbita.t_from_theta(theta1) - orbita.t_from_theta(theta0)
+orbita.add_orbital_position(name="sonda0", theta=theta0)
+orbita.add_orbital_position(name="sonda1", theta=theta1)
+t = orbita.t_at_theta(theta1) - orbita.t_at_theta(theta0)
 print(f"Time to fly from perigee to a true anomaly of {theta1}°: {t/3600:.2f} hours")
 orbita.plot(plot_positions=True)

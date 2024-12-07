@@ -13,7 +13,8 @@ M_moon = 7.348e22 # [kg]
 r12 = 3.844e5 # [km]
 
 three_body = Three_body_restricted(m1=M_earth, m2=M_moon, r12=r12, body1radius=6378, body2radius=1737)
-L1, L2, L3, L4, L5 = three_body.lagrange_points(plot=True)
+L1, L2, L3, L4, L5 = three_body.lagrange_points(add_points=True)
+three_body.plot(frame="rotatingBarycentric")
 
 print(L1)
 print(L2)

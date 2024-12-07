@@ -14,7 +14,8 @@ Earth_radius = 6378 # [km]
 Moon_radius = 1737 # [km]
 
 three_body = Three_body_restricted(m1=M_earth, m2=M_moon, r12=r12, body1radius=Earth_radius, body2radius=Moon_radius)
-L1, L2, L3, L4, L5 = three_body.lagrange_points(plot=True)
+L1, L2, L3, L4, L5 = three_body.lagrange_points(add_points=True)
+three_body.plot(frame="rotatingBarycentric")
 
 C1 = three_body.jacobi_constant(L1, 0)
 C2 = three_body.jacobi_constant(L2, 0)

@@ -14,8 +14,8 @@ theta0 = 0 # [°]
 t = 3*3600 # [s]
 
 orbita = Orbit(m1=M_earth, rp=rp, ra=ra, body1radius=Earth_radius)
-orbita.add_position(name="sonda0", theta=theta0)
-theta1 = orbita.theta_from_t(t)
-orbita.add_position(name="sonda1", theta=theta1)
+orbita.add_orbital_position(name="sonda0", theta=theta0)
+theta1 = orbita.theta_at_t(t)
+orbita.add_orbital_position(name="sonda1", theta=theta1)
 print(f"True anomaly at {t/3600:.2f} hours after perigee passage: {theta1:.2f}°")
 orbita.plot(plot_positions=True)

@@ -12,6 +12,7 @@ class OrbitalBase:
     def __init__(self):
         self.points_in_orbital_plane = []
         self.positions = []
+        self.trajectory_points = []
     
     ########################   Calculations   ########################
     #####   mu   #####
@@ -319,7 +320,7 @@ class OrbitalBase:
         else: # z = 0
             return 1/2
 
-    #####   Geocentric Equatorial Frame   #####
+    #####   Body-centered Equatorial Frame   #####
     @staticmethod
     def ra_dec_from_r_vec(r_vec):
         """
@@ -329,6 +330,24 @@ class OrbitalBase:
         ra = np.mod(np.degrees(np.arctan2(r_vec[1], r_vec[0])), 360)
         dec = np.mod(np.degrees(np.arcsin(r_vec[2]/r)), 360)
         return ra, dec
+
+    #####   Conversions   #####
+    @staticmethod
+    def convert_XY_to_r_theta(X, Y):
+        """
+        Converts Cartesian coordinates to polar coordinates.
+        """
+        r = np.sqrt(X**2 + Y**2)
+        theta = np.mod(np.degrees(np.arctan2(Y, X)), 360)
+        return r, theta
+
+    @staticmethod
+    def convert_r_theta_to_XY(r, theta):
+        """
+        Converts polar coordinates to Cartesian coordinates.
+        """
+        theta = np.radians(theta)
+        return r * np.cos(theta), r * np.sin(theta)
 
     ########################   Self methods   ########################
 
@@ -378,6 +397,26 @@ class OrbitalBase:
         theta = np.radians(theta)
         return np.degrees(np.arctan2(self.e * np.sin(theta), 1 + self.e * np.cos(theta)))
 
+    def gamma_at_state_vectors(self, r_vec, v_vec):
+        """
+        Calcula o ângulo de trajetória (flight path angle) a partir dos vetores de estado.
+        
+        :param r_vec: Vetor posição (km)
+        :param v_vec: Vetor velocidade (km/s)
+        :return: Ângulo de trajetória em graus
+        """
+        # Calcular os módulos dos vetores
+        r = np.linalg.norm(r_vec)
+        v = np.linalg.norm(v_vec)
+        
+        # Calcular o produto escalar
+        r_dot_v = np.dot(r_vec, v_vec)
+        
+        # Calcular o ângulo usando arccos do produto escalar normalizado
+        gamma = np.arccos(r_dot_v/(r*v))
+        
+        # Converter para graus e subtrair de 90° para obter o flight path angle
+        return 90 - np.degrees(gamma)
 
     #######   Alternative variables   #######
     def M_from_E(self, E):
@@ -634,16 +673,26 @@ class OrbitalBase:
         Calculates the true anomaly at a given time.
         """
         if self.e < 1 or self.e > 1: # elliptical or hyperbolic
-            M = self.M_from_t(t)
+            M = self.M_at_t(t)
             E = self.E_from_M(M)
             return np.mod(self.theta_from_E(E), 360)
         else: # parabolic
-            M = self.M_from_t(t)
+            M = self.M_at_t(t)
             M = np.radians(M)
             z = (3*M + np.sqrt(1 + 9*M**2))**(1/3)
             theta = np.degrees(2 * np.arctan(z - 1/z))
             return np.mod(theta, 360)
 
+    def theta_at_state_vectors(self, r_vec, v_vec):
+        """
+        Calculates the true anomaly at a given state vectors.
+        """
+        h_vec = np.cross(r_vec, v_vec)
+        e_vec = np.cross(v_vec, h_vec)/self.mu - r_vec/np.linalg.norm(r_vec)
+        cos_theta = np.dot(e_vec, r_vec)/(self.e * np.linalg.norm(r_vec))
+        sin_theta = np.dot(h_vec, np.cross(e_vec, r_vec))/(self.e * self.h * np.linalg.norm(r_vec))
+        theta = np.mod(np.degrees(np.arctan2(sin_theta, cos_theta)), 360)
+        return theta
 
     #######   Time evolution   #######
     def t_at_M(self, M):
@@ -665,10 +714,10 @@ class OrbitalBase:
         if self.e < 1 or self.e > 1: # elliptical or hyperbolic
             E = self.E_from_theta(theta)
             M = self.M_from_E(E)
-            return self.t_from_M(M)
+            return self.t_at_M(M)
         else: # parabolic
             M = self.M_from_theta(theta)
-            return self.t_from_M(M)
+            return self.t_at_M(M)
 
 
     #######   State vectors   #######
@@ -679,7 +728,7 @@ class OrbitalBase:
         theta = np.radians(theta)
         if frame == "perifocal":
             return self.h**2 / (self.mu * (1 + self.e*np.cos(theta))) * np.array([np.cos(theta), np.sin(theta), 0])
-        elif frame == "geocentric equatorial":
+        elif frame == "bodycenteredEquatorial":
             raise NotImplementedError("Not implemented yet.")
         else:
             raise ValueError("Invalid frame of reference.")
@@ -691,7 +740,7 @@ class OrbitalBase:
         theta = np.radians(theta)
         if frame == "perifocal":
             return self.mu / self.h * np.array([-np.sin(theta), self.e + np.cos(theta), 0])
-        elif frame == "geocentric equatorial":
+        elif frame == "bodycenteredEquatorial":
             raise NotImplementedError("Not implemented yet.")
         else:
             raise ValueError("Invalid frame of reference.")    
@@ -724,7 +773,7 @@ class OrbitalBase:
         if frame == "perifocal":
             r = self.r_vec_at_theta(theta, frame)
             v = self.v_vec_at_theta(theta, frame)
-        elif frame == "geocentric equatorial":
+        elif frame == "bodycenteredEquatorial":
             raise NotImplementedError("Not implemented yet.")
         else:
             raise ValueError("Invalid frame of reference.")
@@ -761,120 +810,222 @@ class OrbitalBase:
         return self.state_at_Q(Q, delta_t)
 
 
+    #######   Adding Points   #######
+    def add_orbital_position(self, theta, t=None, name=None):
+        """
+        Adds an orbital position to the orbit at a given true anomaly and (optionally) time.
+
+        :param theta: True anomaly (degrees)
+        :param t: Time (s), default is None
+        :param name: Name of the position, default is None
+        """
+        r = self.r_at_theta(theta)
+        v = self.v_at_r(r)
+        position = {
+            'name': name,
+            'r': r,
+            'v': v, 
+            'theta': theta,
+            't': t
+        }
+        
+        self.positions.append(position)
+    def add_point_in_orbital_plane(self, r, theta, name=None):
+        """
+        Adds a point in the orbital plane at a given distance and true anomaly.
+        """
+        point = {
+            'name': name,
+            'r': r,
+            'theta': theta
+        }
+        
+        self.points_in_orbital_plane.append(point)
+
+    def add_trajectory_points(self, r, theta):
+        """
+        Adds a trajectory in the orbital plane between two given true anomalies.
+        """
+
+        point = {
+            'r': r,
+            'theta': theta
+        }
+        
+        self.trajectory_points.append(point)
+    
+
     #######   Plotting   #######
-    def plot(self, plot_points=True, plot_positions=True, plot_velocities=False):
+    def plot(self, plot_points=True, plot_positions=True, plot_velocities=True, plot_trajectory_points=True, frame="perifocal"):
         """
         Plots the orbit with optional points and velocities.
 
         :param plot_points: Boolean to plot the points
         :param plot_positions: Boolean to plot the already added orbital positions
         :param plot_velocities: Boolean to plot the velocities
+        :param frame: Frame of reference to plot the orbit
         """
-        # Criar array de anomalia verdadeira
-        if self.e == 1:
-            theta_min = -120
-            theta_max = 120
-            if plot_positions:
-                for pos in self.positions:
-                    if pos['theta'] < theta_min:
-                        theta_min = pos['theta']
-                    if pos['theta'] > theta_max:
-                        theta_max = pos['theta']
-            theta = np.linspace(theta_min, theta_max, 1000)
-        elif self.e > 1:
-            epsilon = 15
-            theta_min = -self.theta_inf() + epsilon
-            theta_max = self.theta_inf() - epsilon
-            if plot_positions:
-                for pos in self.positions:
-                    if pos['theta'] < theta_min:
-                        theta_min = pos['theta']
-                    if pos['theta'] > theta_max:
-                        theta_max = pos['theta']
-            theta = np.linspace(theta_min, theta_max, 1000)
-        else:
-            theta = np.linspace(0, 360, 1000)
-        
-        # Calcular raio para cada ângulo
-        r = self.r_at_theta(theta)
-        
-        # Converter para coordenadas cartesianas
-        x = r * np.cos(np.radians(theta))
-        y = r * np.sin(np.radians(theta))
-        
-        # Criar o plot
-        plt.figure(figsize=(8, 8))
-        plt.plot(x, y, 'b-', label='Orbit')
-        
-        # Plotar o corpo central com o raio correto se fornecido
-        if self.body1radius is not None:
-            circle = plt.Circle((0, 0), self.body1radius, color='r', alpha=0.3, label='Central Body')
-            plt.gca().add_patch(circle)
-        else:
-            plt.plot(0, 0, 'ro', label='Corpo Central')
-    
-        # list of colors
-        cores = ['red', 'orange', 'purple', 'brown', 'deeppink', 'gray', 'olive', 'deepskyblue', 'blue', 'green']
-                
-        if plot_points:
-            for i, point in enumerate(self.points_in_orbital_plane):
-                r = point['r']
-                theta = np.radians(point['theta'])
-                x = r * np.cos(theta)
-                y = r * np.sin(theta)
-                label = point.get('name', f'Point {i+1}')
-                cor = 'black'
-                plt.plot(x, y, 'o', color=cor, label=label)
+        plt.figure(figsize=(8, 8)) 
+        # List of colors
+        colors = ['red', 'orange', 'purple', 'brown', 'deeppink', 'olive', 'deepskyblue', 'blue', 'green']
 
-        if plot_positions:
-            for i, position in enumerate(self.positions):
-                r = position['r']
-                theta = np.radians(position['theta'])
-                x = r * np.cos(theta)
-                y = r * np.sin(theta)
-                label = position.get('name', f'Position {i+1}')
-                if position['t'] is not None:
-                    label += f' (t={position["t"]:.2f}s)'
-                cor = cores[i % len(cores)]  # Recycle colors if there are more points than colors
-                # Plot the secondary body if provided
-                if self.body2radius is not None:
-                    circle2 = plt.Circle((x, y), self.body2radius, color=cor, alpha=0.3, label=label)
-                    plt.gca().add_patch(circle2)
-                else:
-                    plt.plot(x, y, 'o', color=cor, label=label)
-                
-                # Plot velocity vector
-                if plot_velocities:
-                    v = position['v']
-                    v_vec = self.v_vec_at_theta(position['theta'])
-                    vx = v_vec[0]
-                    vy = v_vec[1]
-                    # Normalize the vector for better visualization
-                    scale = self.p/20  # Velocity vector scale
-                    plt.arrow(x, y, vx*scale, vy*scale, 
-                            color=cor, width=0.1, head_width=1*scale, 
-                            head_length=1.5*scale, alpha=0.8)
+        def draw_orbit():
+            # Create array of true anomaly
+            if self.e == 1:
+                theta_min = -120
+                theta_max = 120
+                if plot_positions:
+                    for pos in self.positions:
+                        if pos['theta'] < theta_min:
+                            theta_min = pos['theta']
+                        if pos['theta'] > theta_max:
+                            theta_max = pos['theta']
+                theta = np.linspace(theta_min, theta_max, 1000)
+            elif self.e > 1:
+                epsilon = 15
+                theta_min = -self.theta_inf() + epsilon
+                theta_max = self.theta_inf() - epsilon
+                if plot_positions:
+                    for pos in self.positions:
+                        if pos['theta'] < theta_min:
+                            theta_min = pos['theta']
+                        if pos['theta'] > theta_max:
+                            theta_max = pos['theta']
+                theta = np.linspace(theta_min, theta_max, 1000)
+            else:
+                theta = np.linspace(0, 360, 1000)
+            
+            # Calculate radius for each angle
+            r = self.r_at_theta(theta)
+            
+            # Convert to Cartesian coordinates
+            x, y = self.convert_r_theta_to_XY(r, theta)
+            
+            # Plot orbit
+            plt.plot(x, y, 'b-', label='Orbit', zorder=1)
 
+        def draw_body(x, y, index=1, radius=None, color=None, label=None):
+            if index == 1:
+                if radius is None:
+                    radius = self.body1radius
+                if color is None:
+                    color = 'red'
+                if label is None:
+                    label = 'Central Body'
+            elif index == 2:
+                if radius is None:
+                    radius = self.body2radius
+                if color is None:
+                    color = 'blue'
+                if label is None:
+                    label = 'Secondary Body'
+            
+            if radius is not None:
+                circle = plt.Circle((x, y), radius, color=color, alpha=0.4, label=label, zorder=2)
+                plt.gca().add_patch(circle)
+            else:
+                plt.plot(x, y, 'o', color=color, label=label, zorder=2)
+
+        def draw_points():
+            if self.points_in_orbital_plane:
+                for i, point in enumerate(self.points_in_orbital_plane):
+                    x, y = self.convert_r_theta_to_XY(point['r'], point['theta'])
+                    label = point['name']
+                    color = 'gray'
+                    plt.plot(x, y, 'o', color=color, label=label, zorder=2)
+        
+        def draw_positions():
+            if self.positions:
+                for i, position in enumerate(self.positions):
+                    x, y = self.convert_r_theta_to_XY(position['r'], position['theta'])
+                    label = position.get('name', f'Position {i+1}')
+                    if position['t'] is not None:
+                        label += f' (t={position["t"]:.2f}s)'
+                    color = colors[i % len(colors)]  # Recycle colors if there are more points than colors
+                    # Plot the secondary body if provided
+                    draw_body(x, y, index=2, radius=self.body2radius, color=color, label=label)
+                    
+                    # Plot velocity vector
+                    if plot_velocities:
+                        v = position['v']
+                        v_vec = self.v_vec_at_theta(position['theta'])
+                        vx = v_vec[0]
+                        vy = v_vec[1]
+                        # Normalize the vector for better visualization
+                        scale = self.p/20  # Velocity vector scale
+                        plt.arrow(x, y, vx*scale, vy*scale, 
+                                color=color, width=0.1, head_width=1*scale, 
+                                head_length=1.5*scale, alpha=0.8, zorder=4)
+
+        def draw_trajectory():
+            if self.trajectory_points:
+                # Extrair todos os pontos x,y da trajetória
+                x_points = []
+                y_points = []
+                for point in self.trajectory_points:
+                    x, y = self.convert_r_theta_to_XY(point['r'], point['theta'])
+                    x_points.append(x)
+                    y_points.append(y)
+            
+                # Plotar como uma linha contínua
+                plt.plot(x_points, y_points, '-', color='black', label='Trajectory', zorder=3)
+
+        if frame == "perifocal":
+            plt.title('Frame: Perifocal')
+
+            ### Plot orbit ###
+            draw_orbit()
+            
+            ### Plot main body ###
+            draw_body(0, 0, index=1)
+
+            # Plot points
+            if plot_points:
+                draw_points()
+
+            ### Plot positions ###
+            if plot_positions:
+                draw_positions()
+            
+            ### Plot trajectory points ###
+            if plot_trajectory_points:
+                draw_trajectory()
+
+        elif frame == "rotatingBarycentric":
+            plt.title('Frame: Rotating Barycentric')
+
+            ### Plot main bodies ###
+            draw_body(self.body1_center[0], self.body1_center[1], index=1)
+            draw_body(self.body2_center[0], self.body2_center[1], index=2)
+            
+            ### Plot points ###
+            if plot_points:
+                draw_points()
+
+            ### Plot positions ###
+            if plot_positions:
+                draw_positions()
+            
+            ### Plot trajectory points ###
+            if plot_trajectory_points:
+                draw_trajectory()
+        
         plt.grid(True)
         plt.axis('equal')
         plt.xlabel('x (km)')
         plt.ylabel('y (km)')
-        plt.title('Orbit')
         plt.legend()
-
 
     ####### String representation #######
     def __str__(self):
         """
         Returns a string representation of the orbital parameters.
         """
-        # Criar uma lista com todos os atributos da classe
+        # Get all attributes of the class
         atributos = vars(self)
-        
-        # String inicial
-        resultado = "Parâmetros Orbitais:\n"
-        
-        # Adicionar cada atributo à string
+        # Initial string
+        resultado = "Orbital Parameters:\n"
+        # Add each attribute to the string
         for nome, valor in atributos.items():
             # Pular atributos que são None
             if valor is None:
@@ -885,9 +1036,9 @@ class OrbitalBase:
                 resultado += f"{nome}: {valor:.3f}\n"
             else:
                 resultado += f"{nome}: {valor}\n"
-                
+
         return resultado
-    
+
 
 
 
@@ -1082,39 +1233,6 @@ class Orbit(OrbitalBase):
         
         return orbit_instance
 
-    ############# Adding Points #############
-    def add_orbital_position(self, theta, t=None, name=None):
-        """
-        Adds an orbital position to the orbit at a given true anomaly and (optionally) time.
-
-        :param theta: True anomaly (degrees)
-        :param t: Time (s), default is None
-        :param name: Name of the position, default is None
-        """
-        r = self.r_at_theta(theta)
-        v = self.v_at_r(r)
-        position = {
-            'name': name,
-            'r': r,
-            'v': v, 
-            'theta': theta,
-            't': t
-        }
-        
-        self.positions.append(position)
-    
-    def add_point_in_orbital_plane(self, r, theta, name=None):
-        """
-        Adds a point in the orbital plane at a given distance and true anomaly.
-        """
-        point = {
-            'name': name,
-            'r': r,
-            'theta': theta
-        }
-        
-        self.points_in_orbital_plane.append(point)
-
 
 
 
@@ -1144,11 +1262,13 @@ class Three_body_restricted(OrbitalBase):
         self.pi2 = m2/(m1 + m2)
         self.mu = self.mu1 + self.mu2
         self.r12 = r12
+        self.body1_center = np.array([-self.pi2*self.r12, 0, 0])
+        self.body2_center = np.array([(1-self.pi2)*self.r12, 0, 0])
         self.body1radius = body1radius
         self.body2radius = body2radius
         self.omega = np.sqrt(self.mu/self.r12**3)
 
-    def lagrange_points(self, plot=False):
+    def lagrange_points(self, add_points=True):
         """
         Calculates the Lagrange points.
         """
@@ -1175,13 +1295,16 @@ class Three_body_restricted(OrbitalBase):
         L3_csi = fsolve(f, L3_csi0, args=(self.pi2))[0]
         L3 = np.array([L3_csi * self.r12, 0, 0])
 
-        print(L1_csi0, L1_csi)
-        print(L2_csi0, L2_csi)
-        print(L3_csi0, L3_csi)
+        #print(L1_csi0, L1_csi)
+        #print(L2_csi0, L2_csi)
+        #print(L3_csi0, L3_csi)
 
-        if plot:
-            self.plot(points=[L1, L2, L3, L4, L5])
-        
+        if add_points:
+            self.add_point_in_orbital_plane(*self.convert_XY_to_r_theta(L1[0], L1[1]), name="L1")
+            self.add_point_in_orbital_plane(*self.convert_XY_to_r_theta(L2[0], L2[1]), name="L2")
+            self.add_point_in_orbital_plane(*self.convert_XY_to_r_theta(L3[0], L3[1]), name="L3")
+            self.add_point_in_orbital_plane(*self.convert_XY_to_r_theta(L4[0], L4[1]), name="L4")
+            self.add_point_in_orbital_plane(*self.convert_XY_to_r_theta(L5[0], L5[1]), name="L5")
         return L1, L2, L3, L4, L5
 
     def jacobi_constant(self, r_vec, v):
@@ -1202,7 +1325,7 @@ class Three_body_restricted(OrbitalBase):
         v = np.sqrt(2*C + self.omega**2 * (r_vec[0]**2 + r_vec[1]**2) + 2*self.mu1/r1 + 2*self.mu2/r2)
         return v
 
-    def trajectory(self, r_vec_0, v_vec_0, t_span, t_eval=None, method='RK45', plot=False):
+    def trajectory(self, r_vec_0, v_vec_0, t_span, t_eval=None, method='RK45', add_trajectory_points=True):
         """
         Simulates the trajectory of the spacecraft in the rotating frame.
         """
@@ -1227,7 +1350,10 @@ class Three_body_restricted(OrbitalBase):
             return np.concatenate(((y1_dot, y2_dot, y3_dot), (y4_dot, y5_dot, y6_dot)))
         
         sol = solve_ivp(f, t_span, np.concatenate((r_vec_0, v_vec_0)), t_eval=t_eval, method=method)
-        if plot:
-            self.plot(points=sol.y[:3].T)
+        if add_trajectory_points:
+            # Converter cada ponto (x,y) para (r,theta)
+            for point in sol.y[:2].T:  # Pegamos apenas x e y, ignorando z
+                r, theta = self.convert_XY_to_r_theta(point[0], point[1])
+                self.add_trajectory_points(r, theta)
         return sol
     

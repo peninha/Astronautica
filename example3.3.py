@@ -41,13 +41,13 @@ theta2 = np.mod(np.degrees(theta2), 360)
 print(f"Ângulos de entrada/saída da sombra: {theta1:.4f}, {theta2:.4f} graus")
 
 print("a) apogeu para o sol")
-t = orbita.t_from_theta(theta1)*2
+t = orbita.t_at_theta(theta1)*2
 print(f"Tempo de sombra: {t/60:.4f} minutos")
 
 print("b) perigeu para o sol")
-t = orbita.T - orbita.t_from_theta(theta2)*2
+t = orbita.T - orbita.t_at_theta(theta2)*2
 print(f"Tempo de sombra: {t/60:.4f} minutos")
 
-orbita.add_position(theta1, "sombra com apogeu para o sol") 
-orbita.add_position(theta2, "sombra com perigeu para o sol")
+orbita.add_orbital_position(theta1, name="sombra com apogeu para o sol") 
+orbita.add_orbital_position(theta2, name="sombra com perigeu para o sol")
 orbita.plot(plot_positions=True)
