@@ -21,7 +21,7 @@ r1 = R_terra + z1
 r2 = R_terra + z2
 
 # Criando uma órbita a partir dos dois pontos
-orbita = Orbit.init_from_points(m1=M_earth, r1=r1, theta1=theta1, r2=r2, theta2=theta2, body1radius=R_terra)
+orbita = Orbit.init_from_2positions(m1=M_earth, r1=r1, theta1=theta1, r2=r2, theta2=theta2, body1radius=R_terra)
 
 # Obtendo os parâmetros orbitais
 e = orbita.e
@@ -36,4 +36,4 @@ print(f"c) Semi-eixo maior: {a:.2f} km")
 print(f"d) Período: {periodo/60:.2f} horas")
 
 # Plotando a órbita
-orbita.plot(points=[(r1, theta1), (r2, theta2)])
+orbita.plot(plot_velocities=True)

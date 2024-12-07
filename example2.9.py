@@ -3,7 +3,7 @@ import numpy as np
 
 """
 The perigee radius of a satellite in a parabolic geocentric trajectory of Fig. 2.24 is 7000 km. Find the distance d between
-points P1 and P2 on the orbit, which are 8000 km and 16, 000 km, respectively, from the center of the earth.
+points P1 and P2 on the orbit, which are 8000 km and 16000 km, respectively, from the center of the earth.
 """
 M_earth = 5.9722e24 # [kg]
 # Raio da Terra em km
@@ -36,4 +36,6 @@ print(orbita)
 print(f"Distância entre P1 e P2: {d:.2f} km")
 
 # Plotar a órbita com os pontos
-orbita.plot(points=[(r1, theta1), (r2, theta2)])
+orbita.add_orbital_position(theta1, name='P1')
+orbita.add_orbital_position(theta2, name='P2')
+orbita.plot()

@@ -1,4 +1,5 @@
 from orbitalmechanics import Orbit
+import numpy as np
 
 """
 An earth satellite has the following position and velocity vectors at a given instant:
@@ -13,13 +14,13 @@ r_vec = [7000, 9000, 0]  # km
 v_vec = [-3.3472, 9.1251, 0]  # km/s
 
 # Criar órbita a partir dos vetores
-orbita = Orbit.init_from_perifocal_vectors(m1=M_earth, r_vec=r_vec, v_vec=v_vec, body1radius=R_terra)
+orbita = Orbit.init_from_state_vectors(m1=M_earth, r_vec=r_vec, v_vec=v_vec, body1radius=R_terra)
 
 # Calcular momento angular específico
 print(f"\nMomento angular específico: {orbita.h:.2f} km²/s")
 
 # Calcular anomalia verdadeira
-r = np.sqrt(r_vec[0]**2 + r_vec[1]**2)  # magnitude do vetor posição
+r = np.linalg.norm(r_vec)  # magnitude do vetor posição
 theta = orbita.theta_at_r(r)
 print(f"Anomalia verdadeira: {theta[0]:.2f}°")
 
@@ -27,4 +28,4 @@ print(f"Anomalia verdadeira: {theta[0]:.2f}°")
 print(f"Excentricidade: {orbita.e:.4f}")
 
 # Plotar a órbita com o ponto atual
-orbita.plot(points=[(r, theta[0])])
+orbita.plot(plot_velocities=True)

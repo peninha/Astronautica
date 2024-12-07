@@ -1,4 +1,4 @@
-from orbitalmechanics import Orbit, Lagrange_mechanics
+from orbitalmechanics import Orbit
 import numpy as np
 
 """

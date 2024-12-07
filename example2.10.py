@@ -2,7 +2,7 @@ from orbitalmechanics import Orbit
 import numpy as np
 
 """
-At a given point of a spacecraft’s geocentric trajectory, the radius is 14,600 km, the speed is 8.6 km/s, and the flight path
+At a given point of a spacecraft’s geocentric trajectory, the radius is 14600 km, the speed is 8.6 km/s, and the flight path
 angle is 50°. Show that the path is a hyperbola and calculate the following:
 (a) angular momentum
 (b) eccentricity
@@ -59,4 +59,4 @@ b = orbita.aiming_radius()
 print(f"h) Raio de mira: {b:.2f} km")
 
 # Plotar a órbita
-orbita.plot(points=[(r, theta[0])])
+orbita.plot(plot_velocities=True)

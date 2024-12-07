@@ -53,7 +53,7 @@ print(f"e) Semi-eixo maior: {orbita.a:.2f} km")
 print(f"f) Período orbital: {orbita.T/60/60:.3f} horas")
 
 # g) Raio médio
-r_mean = orbita.r_mean()
+r_mean = orbita.r_avg_by_theta()
 print(f"g) Raio médio: {r_mean:.2f} km")
 
 # h) Anomalia verdadeira em raio médio
@@ -74,5 +74,6 @@ gamma_max = orbita.gamma_at_theta(theta_max)
 print(f"k) Ângulo de trajetória máximo: {gamma_max:.2f}° em theta = {theta_max:.2f}°")
 
 # Plotar a órbita
-orbita.plot(points=[(rp, 0), (ra, 180)])
-
+orbita.add_orbital_position(0, name="Perigeu")
+orbita.add_orbital_position(180, name="Apogeu")
+orbita.plot()
