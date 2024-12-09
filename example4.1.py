@@ -10,7 +10,7 @@ M_earth = 5.974e24 # [kg]
 Earth_radius = 6378 # [km]
 
 r_vec = np.array([-5368, -1784, 3691]) # [km]
-ra, dec = Orbit.ra_dec_from_r_vec(r_vec)
+ra, dec, r = Orbit.convert_cartesian_to_bodycentric(r_vec)
 print(f"Right ascension: {ra:.4f}°")
 print(f"Declination: {dec:.4f}°")
 
