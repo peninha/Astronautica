@@ -23,4 +23,4 @@ print(f"e: {orbita.e:.4f}")
 print(f"ω: {orbita.omega:.4f}°")
 print(f"θ: {orbita.theta:.4f}°")
 
-orbita.plot()
+orbita.plot3d(frame="bodycentric", points=True, positions=True, trajectory=True)
