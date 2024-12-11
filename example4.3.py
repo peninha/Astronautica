@@ -14,7 +14,10 @@ Earth_radius = 6378 # [km]
 r_vec = np.array([-6045, -3490, 2500]) # [km]
 v_vec = np.array([-3.457, 6.618, 2.533]) # [km/s]
 
-orbita = Orbit.init_from_state_vectors(r_vec, v_vec, m1=M_earth, body1radius=Earth_radius)
+M_moon = 7.348e22 # [kg]
+Moon_radius = 1737 # [km]
+
+orbita = Orbit.init_from_state_vectors(r_vec, v_vec, m1=M_earth, body1radius=Earth_radius, t0_clock=300)
 
 print(f"h: {orbita.h:.4f} km²/s")
 print(f"i: {orbita.i:.4f}°")
@@ -23,4 +26,7 @@ print(f"e: {orbita.e:.4f}")
 print(f"ω: {orbita.omega:.4f}°")
 print(f"θ: {orbita.theta:.4f}°")
 
-orbita.plot3d(frame="bodycentric", points=True, positions=True, trajectory=True)
+
+theta1 = 180
+orbita.trajectory(theta1, n_points=100)
+orbita.plot(frame="perifocal", orbit=True, points=True, velocities=True, positions=True, trajectory=True, plot3d=False)

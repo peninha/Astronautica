@@ -25,4 +25,5 @@ orbita = Orbit(m1=M_earth, m2=0, h=h, e=e, i=i, Omega=Omega, omega=omega, theta=
 r_vec, v_vec = orbita.state_vectors_at_theta(theta, frame="bodycentric")
 print(r_vec, v_vec)
 
-orbita.plot3d(frame="bodycentric")
+orbita.plot(frame="bodycentric", points=True, velocities=True, positions=True, trajectory=False, plot3d=True)
+
