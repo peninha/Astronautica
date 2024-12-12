@@ -49,7 +49,7 @@ class OrbitalBase:
     
     #####   Orbital parameters   #####
     @classmethod
-    def orbital_parameters_from_state_vectors(cls, r_vec, v_vec, mu=None, m1=None, m2=0):
+    def orbital_parameters_from_state_vectors(cls, r_vec_bc, v_vec_bc, mu=None, m1=None, m2=0):
         """
         Calculates the orbital parameters from the position and velocity vectors,
         considering any reference frame centered at the primary body.
@@ -66,34 +66,34 @@ class OrbitalBase:
             raise ValueError("Provide mu or m1 (and optionally m2) to calculate mu.")
 
         # Angular momentum vector
-        h_vec = cls.h_vec_from_mu_state_vectors(mu, r_vec, v_vec)
-        h = np.linalg.norm(h_vec)
+        h_vec_bc = cls.h_vec_from_state_vectors(r_vec_bc, v_vec_bc)
+        h = np.linalg.norm(h_vec_bc)
 
         # Inclination   
-        i = cls.i_from_mu_h_vec(mu, h_vec)
+        i = cls.i_from_h_vec(h_vec_bc)
 
         # Node vector
-        n_vec = cls.n_vec_from_mu_h_vec(mu, h_vec)
-        n = np.linalg.norm(n_vec)
+        n_vec_bc = cls.n_vec_from_h_vec(h_vec_bc)
+        n = np.linalg.norm(n_vec_bc)
 
         # Right ascension of the ascending node
-        Omega = cls.Omega_from_mu_n_vec(mu, n_vec)
+        Omega = cls.Omega_from_n_vec(n_vec_bc)
 
         # Eccentricity vector
-        e_vec = cls.e_vec_from_mu_state_vectors(mu, r_vec, v_vec)
-        e = np.linalg.norm(e_vec)
+        e_vec_bc = cls.e_vec_from_mu_state_vectors(r_vec_bc, v_vec_bc)
+        e = np.linalg.norm(e_vec_bc)
 
         # Argument of periapsis
-        omega = cls.omega_from_mu_e_vec_n_vec(mu, e_vec, n_vec)
+        omega = cls.omega_from_e_vec_n_vec(mu, e_vec_bc, n_vec_bc)
 
         # True anomaly
-        theta = cls.theta_from_mu_h_vec_e_vec_r_vec(mu, h_vec, e_vec, r_vec)
+        theta = cls.theta_from_h_vec_e_vec_r_vec(h_vec_bc, e_vec_bc, r_vec_bc)
 
         # Distance
-        r = np.linalg.norm(r_vec)
+        r = np.linalg.norm(r_vec_bc)
 
         # Velocity
-        v = np.linalg.norm(v_vec)
+        v = np.linalg.norm(v_vec_bc)
 
         # Rotation matrix
         Q_bc_peri = cls.Q_from_Euler_angles(Omega, i, omega, pattern="classical")
@@ -118,13 +118,9 @@ class OrbitalBase:
             "Omega": Omega,
             "omega": omega,
             "theta": theta,
-            "r_vec": r_vec,
-            "v_vec": v_vec,
-            "h_vec": h_vec,
-            "e_vec": e_vec,
-            "n_vec": n_vec,
-            "r": r,
-            "v": v,
+            "h_vec_bc": h_vec_bc,
+            "e_vec_bc": e_vec_bc,
+            "n_vec_bc": n_vec_bc,
             "n": n,
             "Q_bc_peri": Q_bc_peri,
             "rp": rp,
@@ -140,40 +136,44 @@ class OrbitalBase:
 
     #####   i   #####
     @staticmethod
-    def i_from_mu_h_vec(mu, h_vec):
+    def i_from_h_vec(h_vec_bc):
         """
-        Calculates the inclination using gravitational parameter and specific angular momentum vector.
+        Calculates the inclination using specific angular momentum vector.
+        h vector must be in the bodycentric frame.
         """
-        return np.degrees(np.arccos(h_vec[2]/np.linalg.norm(h_vec)))
+        return np.degrees(np.arccos(h_vec_bc[2]/np.linalg.norm(h_vec_bc)))
 
     #####   N   #####
     @staticmethod
-    def n_vec_from_mu_h_vec(mu, h_vec):
+    def n_vec_from_h_vec(h_vec_bc):
         """
-        Calculates the node vector using gravitational parameter and specific angular momentum vector.
+        Calculates the node vector using specific angular momentum vector.
+        h vector must be in the bodycentric frame.
         """
-        return np.cross(np.array([0, 0, 1]), h_vec)
+        return np.cross(np.array([0, 0, 1]), h_vec_bc)
 
     #####   Omega   #####
     @staticmethod
-    def Omega_from_mu_n_vec(mu, n_vec):
+    def Omega_from_n_vec(n_vec_bc):
         """
-        Calculates the right ascension of the ascending node using gravitational parameter and node vector.
+        Calculates the right ascension of the ascending node using node vector.
+        Node vector must be in the bodycentric frame.
         """
-        n = np.linalg.norm(n_vec)
+        n = np.linalg.norm(n_vec_bc)
         if n == 0:
             Omega = 0
         else:
-            cos_Omega = n_vec[0]/n
-            sin_Omega = n_vec[1]/n
+            cos_Omega = n_vec_bc[0]/n
+            sin_Omega = n_vec_bc[1]/n
             Omega = np.mod(np.degrees(np.arctan2(sin_Omega, cos_Omega)), 360)
         return Omega
 
     #####   omega   #####
     @staticmethod
-    def omega_from_mu_e_vec_n_vec(mu, e_vec, n_vec):
+    def omega_from_e_vec_n_vec(e_vec, n_vec):
         """
-        Calculates the argument of periapsis using gravitational parameter, eccentricity vector and node vector.
+        Calculates the argument of periapsis using eccentricity vector and node vector.
+        Both vectors must be in the same reference frame.
         """
         e = np.linalg.norm(e_vec)
         n = np.linalg.norm(n_vec)
@@ -187,9 +187,10 @@ class OrbitalBase:
 
     #####   theta   #####
     @staticmethod
-    def theta_from_mu_h_vec_e_vec_r_vec(mu, h_vec, e_vec, r_vec):
+    def theta_from_h_vec_e_vec_r_vec(h_vec, e_vec, r_vec):
         """
-        Calculates the true anomaly using gravitational parameter, eccentricity vector and position vector.
+        Calculates the true anomaly using specific angular momentum vector, eccentricity vector and position vector.
+        All vectors must be in the same reference frame.
         """
         h = np.linalg.norm(h_vec)
         e = np.linalg.norm(e_vec)
@@ -304,6 +305,7 @@ class OrbitalBase:
     def e_vec_from_mu_state_vectors(mu, r_vec, v_vec):
         """
         Calculates the eccentricity vector using gravitational parameter and state vectors.
+        Both vectors must be in the same reference frame.
         """
         r = np.linalg.norm(r_vec)
         v = np.linalg.norm(v_vec)
@@ -337,16 +339,17 @@ class OrbitalBase:
         return np.sqrt(mu * r * (1 + e*np.cos(theta)))
     
     @staticmethod
-    def h_from_mu_state_vectors(mu, r_vec, v_vec):
+    def h_from_state_vectors(r_vec, v_vec):
         """
-        Calculates the specific angular momentum using gravitational parameter, position and velocity vectors.
+        Calculates the specific angular momentum using position and velocity vectors.
         """
-        return np.linalg.norm(OrbitalBase.h_vec_from_mu_state_vectors(mu, r_vec, v_vec))
+        return np.linalg.norm(OrbitalBase.h_vec_from_state_vectors(r_vec, v_vec))
     
     @staticmethod
-    def h_vec_from_mu_state_vectors(mu, r_vec, v_vec):
+    def h_vec_from_state_vectors(r_vec, v_vec):
         """
-        Calculates the specific angular momentum vector using gravitational parameter, position and velocity vectors.
+        Calculates the specific angular momentum vector using position and velocity vectors.
+        Both vectors must be in the same reference frame.
         """
         return np.cross(r_vec, v_vec)
 
@@ -442,6 +445,166 @@ class OrbitalBase:
         else: # z = 0
             return 1/2
 
+    @classmethod
+    #######   Lagrange coefficients   #######
+    def lagrange_coefficients_true(cls, mu, r_vec_0, v_vec_0, delta_theta):
+        """
+        Calculates the Lagrange coefficients using true anomaly.
+
+        :param r_vec_0: Initial position vector (km)
+        :param v_vec_0: Initial velocity vector (km/s)
+        :param delta_theta: Change in true anomaly (degrees)
+        :return: f, g, f_dot, g_dot
+        """
+        delta_theta = np.radians(delta_theta)
+        r0 = np.linalg.norm(r_vec_0)
+        v0 = np.linalg.norm(v_vec_0)
+        h = np.linalg.norm(np.cross(r_vec_0, v_vec_0))
+        vr0 = np.dot(r_vec_0, v_vec_0) / r0
+
+        r = h**2 / (mu * (1 + (h**2/(mu*r0) - 1)*np.cos(delta_theta) - h*vr0/mu * np.sin(delta_theta)))
+        f = 1 - mu*r/h**2 * (1 - np.cos(delta_theta))
+        g = r*r0/h * np.sin(delta_theta)
+        f_dot = mu/h * (1 - np.cos(delta_theta))/np.sin(delta_theta) * (mu/h**2 * (1 - np.cos(delta_theta)) - 1/r0 - 1/r)
+        g_dot = 1 - mu*r0/h**2 * (1 - np.cos(delta_theta))
+
+        return f, g, f_dot, g_dot
+
+    @classmethod
+    def lagrange_coefficients_universal(cls, mu, r_vec_0, v_vec_0, Qui, delta_t):
+        """
+        Calculates the Lagrange coefficients using universal anomaly.
+
+        :param r_vec_0: Initial position vector (km)
+        :param v_vec_0: Initial velocity vector (km/s)
+        :param Qui: Universal anomaly (km^1/2)
+        :param delta_t: Time variation (s)
+        :return: f, g, f_dot, g_dot
+        """
+        r0 = np.linalg.norm(r_vec_0)
+        v0 = np.linalg.norm(v_vec_0)
+        vr0 = np.dot(r_vec_0, v_vec_0) / r0
+        alpha = cls.alpha_from_mu_r_v(mu, r0, v0)
+        z = alpha * Qui**2
+
+        f = 1 - Qui**2/r0 * cls.C(z)
+        g = delta_t - Qui**3/np.sqrt(mu) * cls.S(z)
+        
+        r_vec = f*r_vec_0 + g*v_vec_0
+        r = np.linalg.norm(r_vec)
+
+        f_dot = np.sqrt(mu)/(r*r0) * (alpha*Qui**3 * cls.S(z) - Qui)
+        g_dot = 1 - Qui**2/r * cls.C(z)
+
+        return f, g, f_dot, g_dot
+
+    @classmethod
+    def Qui_at_delta_t(cls, r0, vr0, alpha, delta_t, mu=None, m1=None, m2=0):
+        """
+        Finds the universal anomaly at a given time.
+        """
+        if mu is None:
+            mu = cls.mu_from_m1_m2(m1, m2)
+        elif m1 is None or m2 is None:
+            raise ValueError("Can't calculate universal anomaly without gravitational parameter or masses.")
+        
+        Q0 = np.sqrt(mu) * np.abs(alpha) * delta_t
+        
+        def f(Qui):
+            z = alpha * Qui**2
+            Qui = (r0*vr0 / np.sqrt(mu) * Qui**2 * cls.C(z) + 
+                    (1 - alpha*r0) * Qui**3 * cls.S(z) + 
+                    r0 * Qui - np.sqrt(mu) * delta_t)
+            return Qui
+        def f_dot(Qui):
+            z = alpha * Qui**2
+            Qui_dot = (r0*vr0 / np.sqrt(mu) * Qui * (1 - alpha * Qui**2 * cls.S(z)) +
+                    (1 - alpha*r0) * Qui**2 * cls.C(z) + r0)
+            return Qui_dot
+        
+        Qui = root_scalar(f, fprime=f_dot, x0=Q0, method='newton').root
+        return Qui
+    
+    @classmethod
+    def state_vectors_at_Qui(cls, r_vec_0, v_vec_0, Qui, delta_t, mu=None, m1=None, m2=0):
+        """
+        Finds the position and velocity vectors at a given universal anomaly and delta time.
+        State vectors are in the same reference frame as the initial state vectors, which is perifocal.
+
+        :param r_vec_0: Initial position vector (km)
+        :param v_vec_0: Initial velocity vector (km/s)
+        :param alpha: Alpha parameter, inverse of the semi-major axis (1/km)
+        :param Qui: Universal anomaly (km^1/2)
+        :param delta_t: Time change (s)
+        :return: Position and velocity vectors at the given universal anomaly and delta time (km and km/s)
+        """
+        if mu is None:
+            mu = cls.mu_from_m1_m2(m1, m2)
+        elif m1 is None or m2 is None:
+            raise ValueError("Can't calculate state vectors at universal anomaly without gravitational parameter or masses.")
+        
+        alpha = cls.alpha_from_mu_r_v(mu, r_vec_0, v_vec_0)
+        z = alpha * Qui**2
+        r0 = np.linalg.norm(r_vec_0)
+
+        ## Lagrange coefficients ##
+        f = 1 - Qui**2/r0 * cls.C(z)
+        g = delta_t - Qui**3/np.sqrt(mu) * cls.S(z)
+        
+        r_vec = f*r_vec_0 + g*v_vec_0
+        r = np.linalg.norm(r_vec)
+
+        ## Lagrange coefficients derivatives ##
+        f_dot = np.sqrt(mu)/(r*r0) * (alpha*Qui**3 * cls.S(z) - Qui)
+        g_dot = 1 - Qui**2/r * cls.C(z)
+
+        v_vec = f_dot*r_vec_0 + g_dot*v_vec_0
+
+        return r_vec, v_vec
+    
+    @classmethod
+    def state_vectores_after_delta_theta(cls, r_vec_0, v_vec_0, delta_theta, mu=None, m1=None, m2=0):
+        """
+        Calculates the position and velocity vectors after a given true anomaly change.
+        Useful for propagating orbits in the original frame of reference, regardless of the reference frame used.
+
+        :param r_vec_0: Initial position vector (km)
+        :param v_vec_0: Initial velocity vector (km/s)
+        :param delta_theta: Change in true anomaly (degrees)
+        :return: Position and velocity vectors after the change (km and km/s)
+        """
+        if mu is None:
+            mu = cls.mu_from_m1_m2(m1, m2)
+        elif m1 is None or m2 is None:
+            raise ValueError("Can't calculate state vectors after true anomaly change without gravitational parameter or masses.")
+        
+        f, g, f_dot, g_dot = cls.lagrange_coefficients_true(mu, r_vec_0, v_vec_0, delta_theta)
+        r_vec = f*r_vec_0 + g*v_vec_0
+        v_vec = f_dot*r_vec_0 + g_dot*v_vec_0
+        return r_vec, v_vec
+    
+    @classmethod
+    def state_vectores_after_delta_t(cls, r_vec_0, v_vec_0, delta_t, mu=None, m1=None, m2=0):
+        """
+        Calculates the position and velocity vectors after a given time change.
+        Useful for propagating orbits in the original frame of reference, regardless of the reference frame used.
+
+        :param r_vec_0: Initial position vector (km)
+        :param v_vec_0: Initial velocity vector (km/s)
+        :param delta_t: Time change (s)
+        :return: Position and velocity vectors after the change (km and km/s)
+        """
+        if mu is None:
+            mu = cls.mu_from_m1_m2(m1, m2)
+        elif m1 is None or m2 is None:
+            raise ValueError("Can't calculate state vectors after time change without gravitational parameter or masses.")
+        
+        alpha = cls.alpha_from_mu_r_v(mu, r_vec_0, v_vec_0)
+        r0 = np.linalg.norm(r_vec_0)
+        vr0 = np.dot(r_vec_0, v_vec_0) / r0
+        Qui = cls.Qui_at_delta_t(r0, vr0, alpha, delta_t, mu=mu)
+        return cls.state_vectors_at_Qui(r_vec_0, v_vec_0, Qui, delta_t, mu=mu)
+
     #####   Conversions   #####
     @staticmethod
     def convert_cartesian_to_polar(r_vec_xyz):
@@ -471,15 +634,17 @@ class OrbitalBase:
         return ra, dec
 
     @staticmethod
-    def convert_bc_to_rbc(r_vec_bc, omega_body):
+    def convert_bc_to_rbc(r_vec_bc, omega_body, delta_t):
         """
         Converts a body-centric vector to a rotating body-centric vector.
 
         :param r_vec_bc: Body-centric position vector (km)
         :param omega_body: Body rotation rate (rad/s)
+        :param delta_t: Time change (s)
         :return: Rotating body-centric position vector (km)
         """
-        Q_bc_rbc = OrbitalBase.Q_from_Euler_angles(omega_body, pattern="z")
+        alpha = omega_body * delta_t
+        Q_bc_rbc = OrbitalBase.Q_from_Euler_angles(alpha, pattern="z")
         return Q_bc_rbc @ r_vec_bc
 
     #####   Rotation   #####
@@ -575,23 +740,23 @@ class OrbitalBase:
 
     def gamma_at_state_vectors(self, r_vec, v_vec):
         """
-        Calcula o ângulo de trajetória (flight path angle) a partir dos vetores de estado.
+        Calculates the flight path angle from state vectors.
         
-        :param r_vec: Vetor posição (km)
-        :param v_vec: Vetor velocidade (km/s)
-        :return: Ângulo de trajetória em graus
+        :param r_vec: Position vector (km)
+        :param v_vec: Velocity vector (km/s)
+        :return: Flight path angle (degrees)
         """
-        # Calcular os módulos dos vetores
+        # Calculate the magnitudes of the vectors
         r = np.linalg.norm(r_vec)
         v = np.linalg.norm(v_vec)
         
-        # Calcular o produto escalar
+        # Calculate the dot product
         r_dot_v = np.dot(r_vec, v_vec)
         
-        # Calcular o ângulo usando arccos do produto escalar normalizado
+        # Calculate the angle using arccos of the normalized dot product
         gamma = np.arccos(r_dot_v/(r*v))
         
-        # Converter para graus e subtrair de 90° para obter o flight path angle
+        # Convert to degrees and subtract from 90° to obtain the flight path angle
         return 90 - np.degrees(gamma)
 
     #######   Alternative variables   #######
@@ -617,16 +782,17 @@ class OrbitalBase:
         theta = np.radians(theta)
         return np.degrees(1/6 * np.tan(theta/2)**3 + 1/2 * np.tan(theta/2))
 
-    def M_at_t(self, t):
+    def M_at_t_orbit(self, t_orbit):
         """
-        Calculates the mean anomaly using the time.
+        Calculates the mean anomaly using the orbit time.
+        t_orbit=0 is the time of the perigee passage.
         """
         if self.e < 1:
-            return np.degrees(2 * np.pi * t / self.T)
+            return np.degrees(2 * np.pi * t_orbit / self.T)
         elif self.e == 1:
-            return np.degrees(self.mu**2 * t/ self.h**3)
+            return np.degrees(self.mu**2 * t_orbit/ self.h**3)
         else:
-            return np.degrees(self.mu**2 / self.h**3 * (self.e**2 - 1)**(3/2) * t)
+            return np.degrees(self.mu**2 / self.h**3 * (self.e**2 - 1)**(3/2) * t_orbit)
 
     def E_from_M(self, M):
         """
@@ -673,78 +839,6 @@ class OrbitalBase:
             return np.degrees(2 * np.arctanh(np.sqrt((self.e - 1) / (self.e + 1)) * np.tan(theta/2)))
         else:
             raise ValueError("Can't calculate eccentric anomaly from true anomaly for parabolic orbits.")
-
-    def Qui_at_delta_t(self, delta_t):
-        """
-        Finds the universal anomaly at a given time.
-        """
-        Q0 = np.sqrt(self.mu) * np.abs(self.alpha) * delta_t
-        
-        def f(Qui):
-            z = self.alpha * Qui**2
-            Qui = (self.r0*self.vr0 / np.sqrt(self.mu) * Qui**2 * self.C(z) + 
-                    (1 - self.alpha*self.r0) * Qui**3 * self.S(z) + 
-                    self.r0 * Qui - np.sqrt(self.mu) * delta_t)
-            return Qui
-        def f_dot(Qui):
-            z = self.alpha * Qui**2
-            Qui_dot = (self.r0*self.vr0 / np.sqrt(self.mu) * Qui * (1 - self.alpha *Qui**2*self.S(z)) +
-                    (1 - self.alpha*self.r0) * Qui**2 * self.C(z) + self.r0)
-            return Qui_dot
-        
-        Qui = root_scalar(f, fprime=f_dot, x0=Q0, method='newton').root
-        return Qui
-
-    #######   Lagrange coefficients   #######
-    def lagrange_coefficients_true(self, r_vec_0, v_vec_0, delta_theta):
-        """
-        Calculates the Lagrange coefficients using true anomaly.
-
-        :param r_vec_0: Initial position vector (km)
-        :param v_vec_0: Initial velocity vector (km/s)
-        :param delta_theta: Change in true anomaly (degrees)
-        :return: f, g, f_dot, g_dot
-        """
-        delta_theta = np.radians(delta_theta)
-        r0 = np.linalg.norm(r_vec_0)
-        v0 = np.linalg.norm(v_vec_0)
-        h = np.linalg.norm(np.cross(r_vec_0, v_vec_0))
-        vr0 = np.dot(r_vec_0, v_vec_0) / r0
-
-        r = h**2 / (self.mu * (1 + (h**2/(self.mu*r0) - 1)*np.cos(delta_theta) - h*vr0/self.mu * np.sin(delta_theta)))
-        f = 1 - self.mu*r/h**2 * (1 - np.cos(delta_theta))
-        g = r*r0/h * np.sin(delta_theta)
-        f_dot = self.mu/h * (1 - np.cos(delta_theta))/np.sin(delta_theta) * (self.mu/h**2 * (1 - np.cos(delta_theta)) - 1/r0 - 1/r)
-        g_dot = 1 - self.mu*r0/h**2 * (1 - np.cos(delta_theta))
-
-        return f, g, f_dot, g_dot
-
-    def lagrange_coefficients_universal(self, r_vec_0, v_vec_0, Qui, delta_t):
-        """
-        Calculates the Lagrange coefficients using universal anomaly.
-
-        :param r_vec_0: Initial position vector (km)
-        :param v_vec_0: Initial velocity vector (km/s)
-        :param Qui: Universal anomaly (km^1/2)
-        :param delta_t: Time variation (s)
-        :return: f, g, f_dot, g_dot
-        """
-        r0 = np.linalg.norm(r_vec_0)
-        v0 = np.linalg.norm(v_vec_0)
-        vr0 = np.dot(r_vec_0, v_vec_0) / r0
-        alpha = self.alpha_from_mu_r_v(self.mu, r0, v0)
-        z = alpha * Qui**2
-
-        f = 1 - Qui**2/r0 * self.C(z)
-        g = delta_t - Qui**3/np.sqrt(self.mu) * self.S(z)
-        
-        r_vec = f*r_vec_0 + g*v_vec_0
-        r = np.linalg.norm(r_vec)
-
-        f_dot = np.sqrt(self.mu)/(r*r0) * (alpha*Qui**3 * self.S(z) - Qui)
-        g_dot = 1 - Qui**2/r * self.C(z)
-
-        return f, g, f_dot, g_dot
 
 
     #######   Distance   #######
@@ -845,16 +939,18 @@ class OrbitalBase:
         theta2 = 2*np.pi - theta1
         return [np.degrees(theta1), np.degrees(theta2)]
 
-    def theta_at_t(self, t):
+    def theta_at_t_clock(self, t_clock):
         """
-        Calculates the true anomaly at a given time.
+        Calculates the true anomaly at a given clock time.
         """
+        delta_t = t_clock - self.t0_clock
+        t_orbit = self.t0_orbit + delta_t
         if self.e < 1 or self.e > 1: # elliptical or hyperbolic
-            M = self.M_at_t(t)
+            M = self.M_at_t_orbit(t_orbit)
             E = self.E_from_M(M)
             return np.mod(self.theta_from_E(E), 360)
         else: # parabolic
-            M = self.M_at_t(t)
+            M = self.M_at_t_orbit(t_orbit)
             M = np.radians(M)
             z = (3*M + np.sqrt(1 + 9*M**2))**(1/3)
             theta = np.degrees(2 * np.arctan(z - 1/z))
@@ -862,46 +958,49 @@ class OrbitalBase:
 
     def theta_at_state_vectors(self, r_vec, v_vec):
         """
-        Calculates the true anomaly at a given state vectors.
+        Calculates the true anomaly angle from state vectors,
+        regardless of the reference frame used.
         """
-        h_vec = np.cross(r_vec, v_vec)
-        e_vec = np.cross(v_vec, h_vec)/self.mu - r_vec/np.linalg.norm(r_vec)
-        if self.e == 0:
+        h_vec = self.h_vec_from_state_vectors(r_vec, v_vec)
+        h = np.linalg.norm(h_vec)
+        e_vec = self.e_vec_from_mu_state_vectors(self.mu, r_vec, v_vec)
+        e = np.linalg.norm(e_vec)
+        if e == 0:
             theta = 0
         else:
-            cos_theta = np.dot(e_vec, r_vec)/(self.e * np.linalg.norm(r_vec))
-            sin_theta = np.dot(h_vec, np.cross(e_vec, r_vec))/(self.e * self.h * np.linalg.norm(r_vec))
+            cos_theta = np.dot(e_vec, r_vec)/(e * np.linalg.norm(r_vec))
+            sin_theta = np.dot(h_vec, np.cross(e_vec, r_vec))/(e * h * np.linalg.norm(r_vec))
             theta = np.mod(np.degrees(np.arctan2(sin_theta, cos_theta)), 360)
         return theta
 
 
     #######   Time evolution   #######
-    def t_at_M(self, M):
+    def t_orbit_at_M(self, M):
         """
-        Calculates the time using the mean anomaly.
+        Calculates the orbit time using the mean anomaly.
+        t_orbit=0 is the time of the perigee passage.
         """
         M = np.radians(M)
         if self.e < 1:
             t = M * self.T / (2 * np.pi)
-            while t < 0:
-                t += self.T
         elif self.e == 1:
             t = M * self.h**3 / self.mu**2
         else:
             t = M * self.h**3 / (self.mu**2 * (self.e**2 - 1)**(3/2))
         return t
     
-    def t_at_theta(self, theta):
+    def t_orbit_at_theta(self, theta):
         """
-        Calculates the time using the true anomaly.
+        Calculates the orbit time using the true anomaly.
+        t_orbit=0 is the time of the perigee passage.
         """
         if self.e < 1 or self.e > 1: # elliptical or hyperbolic
             E = self.E_from_theta(theta)
             M = self.M_from_E(E)
-            return self.t_at_M(M)
+            return self.t_orbit_at_M(M)
         else: # parabolic
             M = self.M_from_theta(theta)
-            return self.t_at_M(M)
+            return self.t_orbit_at_M(M)
 
 
     #######   State vectors   #######
@@ -933,26 +1032,7 @@ class OrbitalBase:
         else:
             raise ValueError("Invalid frame of reference.")    
 
-    def state_vectors_at_Qui(self, Qui, delta_t):
-        """
-        Finds the position and velocity vectors at a given universal anomaly and delta time.
-        """
-        z = self.alpha * Qui**2
-        
-        ## Lagrange coefficients ##
-        f = 1 - Qui**2/self.r0 * self.C(z)
-        g = delta_t - Qui**3/np.sqrt(self.mu) * self.S(z)
-        
-        r_vec = f*self.r_vec_0 + g*self.v_vec_0
-        r = np.linalg.norm(r_vec)
-
-        ## Lagrange coefficients derivatives ##
-        f_dot = np.sqrt(self.mu)/(r*self.r0) * (self.alpha*Qui**3 * self.S(z) - Qui)
-        g_dot = 1 - Qui**2/r * self.C(z)
-
-        v_vec = f_dot*self.r_vec_0 + g_dot*self.v_vec_0
-
-        return r_vec, v_vec
+    
 
     def state_vectors_at_theta(self, theta, frame="perifocal"):
         """
@@ -962,8 +1042,8 @@ class OrbitalBase:
             r_vec = self.r_vec_at_theta(theta, frame)
             v_vec = self.v_vec_at_theta(theta, frame)
         elif frame == "bodycentric":
-            r_vec = self.Q_bc_peri.T @ self.r_vec_at_theta(theta, frame="perifocal")
-            v_vec = self.Q_bc_peri.T @ self.v_vec_at_theta(theta, frame="perifocal")
+            r_vec = self.r_vec_at_theta(theta, frame="bodycentric")
+            v_vec = self.v_vec_at_theta(theta, frame="bodycentric")
         elif frame == "rotatingBodycentric":
             r_vec = self.r_vec_at_theta(theta, frame="rotatingBodycentric")
             v_vec = self.v_vec_at_theta(theta, frame="rotatingBodycentric")
@@ -971,42 +1051,26 @@ class OrbitalBase:
             raise ValueError("Invalid frame of reference.")
         return r_vec, v_vec
 
-    def state_vectors_at_t(self, t):
+    def state_vectors_at_t_clock(self, t_clock, frame="perifocal"):
         """
         Finds the position and velocity vectors at a given time.
         """
-        if self.frame == "perifocal":
-            delta_t = t - self.t0_clock
-            Qui = self.Qui_at_delta_t(delta_t)
-            r_vec, v_vec = self.state_vectors_at_Qui(Qui, delta_t)
-        elif self.frame == "bodycentric":
-            delta_t = t - self.t0_clock
-            Qui = self.Qui_at_delta_t(delta_t)
-            r_vec, v_vec = self.state_vectors_at_Qui(Qui, delta_t)
-            r_vec = self.convert_bodycentric_to_rotatingBodycentric(r_vec, self.omega_body)
-            v_vec = self.convert_bodycentric_to_rotatingBodycentric(v_vec, self.omega_body)
+        if frame == "perifocal":
+            theta = self.theta_at_t_clock(t_clock)
+            r_vec, v_vec = self.state_vectors_at_theta(theta, frame="perifocal")
+        elif frame == "bodycentric":
+            r_vec_peri, v_vec_peri = self.state_vectors_at_t_clock(t_clock, frame="perifocal")
+            r_vec = self.Q_bc_peri.T @ r_vec_peri
+            v_vec = self.Q_bc_peri.T @ v_vec_peri
+        elif frame == "rotatingBodycentric":
+            delta_t = t_clock - self.t0_clock
+            r_vec_bc, v_vec_bc = self.state_vectors_at_t_clock(t_clock, frame="bodycentric")
+            r_vec = self.convert_bc_to_rbc(r_vec_bc, self.omega_body, delta_t)
+            v_vec = self.convert_bc_to_rbc(v_vec_bc, self.omega_body, delta_t)
+        else:
+            raise ValueError("Invalid frame of reference.")
         return r_vec, v_vec
 
-    def state_after_delta_theta(self, r_vec_0, v_vec_0, delta_theta):
-        """
-        Calculates the position and velocity vectors after a given true anomaly change.
-
-        :param r_vec_0: Initial position vector (km)
-        :param v_vec_0: Initial velocity vector (km/s)
-        :param delta_theta: Change in true anomaly (degrees)
-        :return: Position and velocity vectors after the change (km and km/s)
-        """
-        f, g, f_dot, g_dot = self.lagrange_coefficients_true(r_vec_0, v_vec_0, delta_theta)
-        r_vec = f*r_vec_0 + g*v_vec_0
-        v_vec = f_dot*r_vec_0 + g_dot*v_vec_0
-        return r_vec, v_vec
-    
-    def state_after_delta_t(self, r_vec_0, v_vec_0, delta_t):
-        """
-        Calculates the position and velocity vectors after a given time change.
-        """
-        Qui = self.Qui_at_delta_t(delta_t)
-        return self.state_vectors_at_Qui(Qui, delta_t)
 
     #######   Adding Points   #######
     def add_orbital_position(self, theta, t=None, name=None):
@@ -1041,38 +1105,33 @@ class OrbitalBase:
         
         self.points_in_orbital_plane.append(point)
 
-    def add_zero_state_from_theta(self, theta0=0, t0_clock=0, frame="perifocal", add_position=True):
+    def add_zero_state_from_theta(self, theta0=0, t0_clock=0, add_position=True):
         """
         Adds the initial state vectors for trajectory calculations.
+        State vectors are always given in perifocal frame.
         """
         self.theta0 = theta0
-        r_vec_0, v_vec_0 = self.state_vectors_at_theta(theta0, frame=frame)
-        self.r_vec_0 = r_vec_0
-        self.v_vec_0 = v_vec_0
-        self.r0 = np.linalg.norm(r_vec_0)
-        self.v0 = np.linalg.norm(v_vec_0)
-        self.vr0 = np.dot(r_vec_0, v_vec_0)/self.r0
+        self.r_vec_0, self.v_vec_0 = self.state_vectors_at_theta(theta0, frame="perifocal")
+        self.r0 = np.linalg.norm(self.r_vec_0)
+        self.v0 = np.linalg.norm(self.v_vec_0)
+        self.vr0 = np.dot(self.r_vec_0, self.v_vec_0)/self.r0
         self.t0_clock = t0_clock
-        self.t0_orbit = self.t_at_theta(self.theta0)
-        self.delta_t = self.t0_clock - self.t0_orbit
+        self.t0_orbit = self.t_orbit_at_theta(self.theta0)
+        self.time_offset = self.t0_clock - self.t0_orbit
         if add_position:
             self.add_orbital_position(self.theta0, self.t0_clock, name="Initial Position")
 
-    def add_zero_state_from_vectors(self, r_vec_0, v_vec_0, t0_clock=0, add_position=True):
+    def add_zero_state_from_vectors(self, r_vec, v_vec, t0_clock=0, add_position=True):
         """
         Adds the initial state vectors for trajectory calculations.
+
+        :param r_vec: Initial position vector (km)
+        :param v_vec: Initial velocity vector (km/s)
+        :param t0_clock: Time (s)
+        :param add_position: Boolean to add the initial position to the orbit
         """
-        self.r_vec_0 = r_vec_0
-        self.v_vec_0 = v_vec_0
-        self.r0 = np.linalg.norm(r_vec_0)
-        self.v0 = np.linalg.norm(v_vec_0)
-        self.vr0 = np.dot(r_vec_0, v_vec_0)/self.r0
-        self.theta0 = self.theta_at_state_vectors(r_vec_0, v_vec_0)
-        self.t0_clock = t0_clock
-        self.t0_orbit = self.t_at_theta(self.theta0)
-        self.delta_t = self.t0_clock - self.t0_orbit
-        if add_position:
-            self.add_orbital_position(self.theta0, self.t0_clock, name="Initial Position")
+        theta0 = self.theta_at_state_vectors(r_vec, v_vec)
+        self.add_zero_state_from_theta(theta0, t0_clock, add_position)
 
     def add_trajectory_points(self, r, theta, t_clock=None):
         """
@@ -1121,15 +1180,15 @@ class OrbitalBase:
             else: # parabolic and hyperbolic
                 self.t1_orbit = self.t_at_theta(theta1)
             
-            self.t1_clock = self.delta_t + self.t1_orbit
+            self.t1_clock = self.time_offset + self.t1_orbit
         else:
             self.t1_clock = t1_clock
-            self.t1_orbit = self.t1_clock - self.delta_t
+            self.t1_orbit = self.t1_clock - self.time_offset
         
         
 
         # Add final position
-        theta1 = self.theta_at_t(self.t1_orbit)
+        theta1 = self.theta_at_t_clock(self.t1_clock)
         self.add_orbital_position(theta1, self.t1_clock, name='Final Position')
         
         # Ensure interval between points is not smaller than min_interval
@@ -1139,8 +1198,7 @@ class OrbitalBase:
         # Calculate trajectory for each evaluation point
         theta_prev = self.theta0
         for t_clock in t_eval:
-            t_orbit = t_clock - self.delta_t
-            theta = self.theta_at_t(t_orbit)
+            theta = self.theta_at_t_clock(t_clock)
             if theta < theta_prev:
                 theta += 360
             r = self.r_at_theta(theta)
@@ -1171,9 +1229,9 @@ class OrbitalBase:
         def draw_orbit():
             scale = self.rp  # Scale for auxiliary vectors
             # Angular momentum vector
-            h_vec = self.h_vec/self.h * scale #frame bodycentric
+            h_vec = self.h_vec_bc/self.h * scale #frame bodycentric
             # Eccentricity vector
-            e_vec = self.e_vec/self.e * scale #frame bodycentric
+            e_vec = self.e_vec_bc/self.e * scale #frame bodycentric
             if frame == "perifocal":
                 h_vec = self.Q_bc_peri @ h_vec
                 e_vec = self.Q_bc_peri @ e_vec
@@ -1349,7 +1407,7 @@ class OrbitalBase:
                 else:
                     plt.plot(x_line, y_line, '-', color='black', label='Trajectory', zorder=3)
 
-        if frame == "perifocal" or frame == "bodycentric":
+        if frame == "perifocal" or frame == "bodycentric" or frame == "rotatingBodycentric":
             ### Plot main body ###
             draw_body(0, 0, 0, index=1)
 
@@ -1368,7 +1426,7 @@ class OrbitalBase:
             ### Plot trajectory points ###
             if trajectory:
                 draw_trajectory()
-
+            
         elif frame == "rotatingBarycentric":
             plt.title('Frame: Rotating Barycentric')
 
@@ -1427,7 +1485,7 @@ class OrbitalBase:
 
 
 class Orbit(OrbitalBase):
-    def __init__(self, mu=None, m1=None, m2=0, a=None, e=None, rp=None, ra=None, h=None, Omega=None, i=None, omega=None, theta=None, t0_clock=0, body1radius=None, body2radius=None, **orbital_params):
+    def __init__(self, mu=None, m1=None, m2=0, a=None, e=None, rp=None, ra=None, h=None, Omega=None, i=None, omega=None, theta0=None, t0_clock=0, body1radius=None, body2radius=None):
         """
         Initializes the Orbit class with primary orbital parameters.
         :param mu: Standard gravitational parameter (km³/s²)
@@ -1440,115 +1498,78 @@ class Orbit(OrbitalBase):
         :param h: Angular momentum (km²/s)
         :param body1radius: Radius of the central body (km) (optional)
         :param body2radius: Radius of the orbiting body (km) (optional)
-        :param orbital_params: Optional dictionary with pre-calculated orbital parameters (when initializing from state vectors)
         """
         super().__init__()
         self.body1radius = body1radius
         self.body2radius = body2radius
 
-        # If orbital_params is provided, first add explicit parameters to the dictionary
-        if orbital_params:
-            # Add explicit parameters that aren't None to orbital_params
-            explicit_params = {
-                'mu': mu,
-                'm1': m1,
-                'm2': m2,
-                'a': a,
-                'e': e,
-                'rp': rp,
-                'ra': ra,
-                'h': h,
-                'Omega': Omega,
-                'i': i,
-                'omega': omega,
-                'theta': theta,
-                't0_clock': t0_clock
-            }
-            # Update orbital_params only with non-None values
-            orbital_params.update({k: v for k, v in explicit_params.items() if v is not None})
-            
-            # Now set all attributes
-            for key, value in orbital_params.items():
-                setattr(self, key, value)
-            return
+        # Calculate mu if not provided
+        if mu is not None:
+            self.mu = mu  # Gravitational parameter
+        elif m1 is not None:
+            self.mu = self.mu_from_m1_m2(m1, m2)
         else:
-            # Calculate mu if not provided
-            if mu is not None:
-                self.mu = mu  # Gravitational parameter
-            elif m1 is not None:
-                self.mu = self.mu_from_m1_m2(m1, m2)
-            else:
-                raise ValueError("Provide either mu or m1 (and optionally m2) to calculate mu.")
-            self.m1 = m1
-            self.m2 = m2
-            
-            # Calculate rp, e, h, ra, a, b, epsilon, T, p, alpha
-            if rp is not None and e is not None:
-                self.rp = rp
-                self.e = e
-                self.h = self.h_from_mu_rp_e(self.mu, self.rp, self.e)
-                self.ra = self.ra_from_mu_h_e(self.mu, self.h, self.e)
-                self.a = self.a_from_rp_ra(self.rp, self.ra)
-            elif rp is not None and ra is not None:
-                self.rp = rp
-                self.ra = ra
-                self.a = self.a_from_rp_ra(self.rp, self.ra)
-                self.e = self.e_from_rp_ra(self.rp, self.ra)
-                self.h = self.h_from_mu_rp_e(self.mu, self.rp, self.e)
-            elif rp is not None and h is not None:
-                self.rp = rp
-                self.h = h
-                self.e = self.e_from_mu_h_rp(self.mu, self.h, self.e)
-                self.ra = self.ra_from_mu_h_e(self.mu, self.h, self.e)
-                self.a = self.a_from_rp_ra(self.rp, self.ra)
-            elif e is not None and h is not None:
-                self.e = e
-                self.h = h
-                self.rp = self.rp_from_mu_h_e(self.mu, self.h, self.e)
-                self.ra = self.ra_from_mu_h_e(self.mu, self.h, self.e)
-                self.a = self.a_from_rp_ra(self.rp, self.ra)
-            elif a is not None and e is not None:
-                if e == 1:
-                    raise ValueError("Can't find rp from 'a' and 'e' for parabolic (e=1) orbits.")
-                self.a = a
-                self.e = e
-                self.rp = self.rp_from_a_e(self.a, self.e)
-                self.ra = self.ra_from_a_e(self.a, self.e)
-                self.h = self.h_from_mu_rp_e(self.mu, self.rp, self.e)
-            else:
-                raise ValueError("Provide sufficient parameters to define the orbit (rp and e, rp and ra, rp and h, e and h or a and e).")
-            
-            self.b = self.b_from_a_e(self.a, self.e)
-            self.epsilon = self.epsilon_from_mu_h_e(self.mu, self.h, self.e)
-            self.T = self.T_from_mu_a(self.mu, self.a)
-            self.p = self.p_from_mu_h(self.mu, self.h)
-            self.alpha = self.alpha_from_a(self.a)
+            raise ValueError("Provide either mu or m1 (and optionally m2) to calculate mu.")
+        self.m1 = m1
+        self.m2 = m2
+        
+        # Calculate rp, e, h, ra, a, b, epsilon, T, p, alpha
+        if rp is not None and e is not None:
+            self.rp = rp
+            self.e = e
+            self.h = self.h_from_mu_rp_e(self.mu, self.rp, self.e)
+            self.ra = self.ra_from_mu_h_e(self.mu, self.h, self.e)
+            self.a = self.a_from_rp_ra(self.rp, self.ra)
+        elif rp is not None and ra is not None:
+            self.rp = rp
+            self.ra = ra
+            self.a = self.a_from_rp_ra(self.rp, self.ra)
+            self.e = self.e_from_rp_ra(self.rp, self.ra)
+            self.h = self.h_from_mu_rp_e(self.mu, self.rp, self.e)
+        elif rp is not None and h is not None:
+            self.rp = rp
+            self.h = h
+            self.e = self.e_from_mu_h_rp(self.mu, self.h, self.e)
+            self.ra = self.ra_from_mu_h_e(self.mu, self.h, self.e)
+            self.a = self.a_from_rp_ra(self.rp, self.ra)
+        elif e is not None and h is not None:
+            self.e = e
+            self.h = h
+            self.rp = self.rp_from_mu_h_e(self.mu, self.h, self.e)
+            self.ra = self.ra_from_mu_h_e(self.mu, self.h, self.e)
+            self.a = self.a_from_rp_ra(self.rp, self.ra)
+        elif a is not None and e is not None:
+            if e == 1:
+                raise ValueError("Can't find rp from 'a' and 'e' for parabolic (e=1) orbits.")
+            self.a = a
+            self.e = e
+            self.rp = self.rp_from_a_e(self.a, self.e)
+            self.ra = self.ra_from_a_e(self.a, self.e)
+            self.h = self.h_from_mu_rp_e(self.mu, self.rp, self.e)
+        else:
+            raise ValueError("Provide sufficient parameters to define the orbit (rp and e, rp and ra, rp and h, e and h or a and e).")
+        
+        self.b = self.b_from_a_e(self.a, self.e)
+        self.epsilon = self.epsilon_from_mu_h_e(self.mu, self.h, self.e)
+        self.T = self.T_from_mu_a(self.mu, self.a)
+        self.p = self.p_from_mu_h(self.mu, self.h)
+        self.alpha = self.alpha_from_a(self.a)
 
-            if Omega is not None and i is not None and omega is not None and theta is not None:
-                self.Omega = Omega
-                self.i = i
-                self.omega = omega
-                self.theta = theta
-                self.Q_bc_peri = self.Q_from_Euler_angles(Omega, i, omega, pattern="classical")
-                self.r_vec, self.v_vec = self.state_vectors_at_theta(theta, frame="bodycentric")
-                self.h_vec = self.h_vec_from_mu_state_vectors(self.mu, self.r_vec, self.v_vec)
-                self.e_vec = self.e_vec_from_mu_state_vectors(self.mu, self.r_vec, self.v_vec)
-                self.n_vec = self.n_vec_from_mu_h_vec(self.mu, self.h_vec)
-                self.r = np.linalg.norm(self.r_vec)
-                self.v = np.linalg.norm(self.v_vec)
-                self.n = np.linalg.norm(self.n_vec)
+        if Omega is not None and i is not None and omega is not None and theta0 is not None:
+            self.Omega = Omega
+            self.i = i
+            self.omega = omega
+            self.theta0 = theta0
+            self.Q_bc_peri = self.Q_from_Euler_angles(Omega, i, omega, pattern="classical")
+            self.r_vec_bc, self.v_vec_bc = self.state_vectors_at_theta(theta0, frame="bodycentric")
+            self.h_vec_bc = self.h_vec_from_state_vectors(self.r_vec_bc, self.v_vec_bc)
+            self.e_vec_bc = self.e_vec_from_mu_state_vectors(self.mu, self.r_vec_bc, self.v_vec_bc)
+            self.n_vec_bc = self.n_vec_from_h_vec(self.h_vec_bc)
+            self.r = np.linalg.norm(self.r_vec_bc)
+            self.v = np.linalg.norm(self.v_vec_bc)
+            self.n = np.linalg.norm(self.n_vec_bc)
 
-                # Initial parameters
-                self.t0_clock = t0_clock
-                self.t0_orbit = self.t_at_theta(self.theta)
-                self.delta_t = self.t0_clock - self.t0_orbit
-                self.r_vec_0 = self.r_vec
-                self.v_vec_0 = self.v_vec
-                self.r0 = np.linalg.norm(self.r_vec_0)
-                self.v0 = np.linalg.norm(self.v_vec_0)
-                self.vr0 = np.dot(self.r_vec_0, self.v_vec_0)/self.r0
-                self.theta0 = self.theta_at_state_vectors(self.r_vec_0, self.v_vec_0)
-                self.add_orbital_position(self.theta0, self.t0_clock, name="Initial Position")
+        self.add_zero_state_from_theta(theta0, t0_clock, add_position=True)
 
     @classmethod
     def init_from_2positions(cls, r1, theta1, r2, theta2, mu=None, m1=None, m2=0, body1radius=None, body2radius=None):
@@ -1615,18 +1636,16 @@ class Orbit(OrbitalBase):
         return orbit_instance
 
     @classmethod
-    def init_from_state_vectors(cls, r_vec, v_vec, mu=None, m1=None, m2=0, name=None, starting_point=True, t0_clock=0, body1radius=None, body2radius=None):
+    def init_from_state_vectors(cls, r_vec_bc, v_vec_bc, mu=None, m1=None, m2=0, t0_clock=0, body1radius=None, body2radius=None):
         """
         Given a position and velocity vectors represented in some inertial frame of reference
         centered in the primary body, creates a new instance of Orbit.
 
-        :param r_vec: Position vector in the inertial frame of reference (km)
-        :param v_vec: Velocity vector in the inertial frame of reference (km/s)
+        :param r_vec_bc: Position vector in the bodycentric frame of reference (km)
+        :param v_vec_bc: Velocity vector in the bodycentric frame of reference (km/s)
         :param mu: Standard gravitational parameter (km³/s²)
         :param m1: Mass of the primary body (kg)
         :param m2: Mass of the secondary body (kg), default is 0
-        :param name: Name of the body
-        :param starting_point: If True, adds the starting point to the orbit
         :param t0_clock: Time of the starting point (s)
         :param body1radius: Radius of the central body (km) (optional)
         :param body2radius: Radius of the orbiting body (km) (optional)
@@ -1637,24 +1656,15 @@ class Orbit(OrbitalBase):
             raise ValueError("Provide mu or m1 (and optionally m2) to calculate mu.")
         
         # Calculate all orbital parameters
-        orbital_parameters = cls.orbital_parameters_from_state_vectors(r_vec, v_vec, mu)
+        orbital_parameters = cls.orbital_parameters_from_state_vectors(r_vec_bc, v_vec_bc, mu)
+        h = orbital_parameters['h']
+        e = orbital_parameters['e']
+        Omega = orbital_parameters['Omega']
+        i = orbital_parameters['i']
+        omega = orbital_parameters['omega']
+        theta0 = orbital_parameters['theta0']
         
-        # Add parameters that are not in orbital_parameters
-        additional_params = {
-            'body1radius': body1radius,
-            'body2radius': body2radius
-        }
-        
-        # Create the instance passing all the calculated parameters
-        orbit_instance = cls(**orbital_parameters, **additional_params)
-        
-        # Add the starting point if requested
-        if starting_point:
-            orbit_instance.add_zero_state_from_vectors(r_vec, v_vec, t0_clock)
-        else:
-            orbit_instance.add_orbital_position(theta=orbital_parameters['theta'], name="Position 1")
-        
-        return orbit_instance
+        return cls(mu=mu, m1=m1, m2=m2, e=e, h=h, Omega=Omega, i=i, omega=omega, theta0=theta0, t0_clock=t0_clock, body1radius=body1radius, body2radius=body2radius)
 
     @classmethod
     def init_from_r_v_theta(cls, r, v, theta, mu=None, m1=None, m2=0, body1radius=None, body2radius=None):
