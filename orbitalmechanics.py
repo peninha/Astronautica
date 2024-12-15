@@ -80,14 +80,14 @@ class OrbitalBase:
         Omega = cls.Omega_from_n_vec(n_vec_bc)
 
         # Eccentricity vector
-        e_vec_bc = cls.e_vec_from_mu_state_vectors(r_vec_bc, v_vec_bc)
+        e_vec_bc = cls.e_vec_from_mu_state_vectors(mu, r_vec_bc, v_vec_bc)
         e = np.linalg.norm(e_vec_bc)
 
         # Argument of periapsis
-        omega = cls.omega_from_e_vec_n_vec(mu, e_vec_bc, n_vec_bc)
+        omega = cls.omega_from_e_vec_n_vec(e_vec_bc, n_vec_bc)
 
         # True anomaly
-        theta = cls.theta_from_h_vec_e_vec_r_vec(h_vec_bc, e_vec_bc, r_vec_bc)
+        theta0 = cls.theta_from_h_vec_e_vec_r_vec(h_vec_bc, e_vec_bc, r_vec_bc)
 
         # Distance
         r = np.linalg.norm(r_vec_bc)
@@ -117,7 +117,7 @@ class OrbitalBase:
             "i": i,
             "Omega": Omega,
             "omega": omega,
-            "theta": theta,
+            "theta0": theta0,
             "h_vec_bc": h_vec_bc,
             "e_vec_bc": e_vec_bc,
             "n_vec_bc": n_vec_bc,
@@ -311,7 +311,6 @@ class OrbitalBase:
         v = np.linalg.norm(v_vec)
         vr = np.dot(r_vec, v_vec)/r
         return 1/mu * ( (v**2 - mu/r)*r_vec - r*vr*v_vec )
-    
 
     #####   h   #####
     @staticmethod
@@ -419,6 +418,40 @@ class OrbitalBase:
         if a == float('inf'):
             return 0
         return 1/a
+
+    @staticmethod
+    def omega_dot_oblateness_correction(J2, mu, R_body, i, e, a):
+        """
+        Calculates the oblateness correction factor using gravitational parameter, distance, velocity and body rotation rate.
+        """
+        if e >= 1:
+            raise ValueError("Can't calculate oblateness correction for parabolic or hyperbolic orbits.")
+        i = np.radians(i)
+        coeficient = - 3/2 * np.sqrt(mu) * J2 * R_body**2 / (a**(7/2) * (1 - e**2)**2)
+        Omega_dot = np.degrees(coeficient * np.cos(i))
+        omega_dot = np.degrees(coeficient * (5/2 * np.sin(i)**2 - 2)) 
+        return Omega_dot, omega_dot
+
+    @staticmethod
+    def step_function(var, var_period):
+        """
+        Step function for variable correction of periodic variables outside
+        the range of -var_period/2 and var_period/2.
+        Returns:
+        -var_period/2 <= var <= var_period/2: 0
+        -3*var_period/2 <= var < -var_period/2: -1
+        -5*var_period/2 <= var < -3*var_period/2: -2
+        ...
+        var_period/2 < var <= 3*var_period/2: 1
+        5*var_period/2 < var <= 9*var_period/2: 2
+        ...
+        """
+        if -var_period/2 <= var <= var_period/2:
+            return 0
+        if var < var_period/2:
+            return (var + var_period/2) // var_period
+        else:
+            return np.abs((-var + var_period/2) // var_period)
 
     #####   Stumpff functions   #####
     @staticmethod
@@ -607,6 +640,37 @@ class OrbitalBase:
 
     #####   Conversions   #####
     @staticmethod
+    def color_gradient(value, colors=[(1,0.5,0), (0,0,1)]):
+        """
+        Returns an interpolated color based on a number between 0 and 1.
+
+        :param colors: List of RGB colors to interpolate (each color as tuple of 3 values 0-1) 
+        :param value: Value between 0 and 1 to interpolate the color
+        :return: Interpolated RGB color tuple
+        """
+        if value < 0 or value > 1:
+            raise ValueError("Value must be between 0 and 1.")
+            
+        if len(colors) < 2:
+            raise ValueError("At least 2 colors are needed for interpolation.")
+            
+        # Find the two colors to interpolate between
+        num_segments = len(colors) - 1
+        segment = value * num_segments
+        i = int(segment)
+        
+        # Handle last segment edge case
+        if i >= num_segments:
+            return colors[-1]
+            
+        # Interpolate between the two colors
+        t = segment - i
+        c1 = np.array(colors[i])
+        c2 = np.array(colors[i+1])
+        
+        return tuple(c1 * (1-t) + c2 * t)
+    
+    @staticmethod
     def convert_cartesian_to_polar(r_vec_xyz):
         """
         Converts Cartesian coordinates to polar coordinates.
@@ -629,23 +693,22 @@ class OrbitalBase:
         Calculates the right ascension and declination from the Cartesian position vector.
         """
         r = np.linalg.norm(r_vec_xyz)
-        ra = np.mod(np.degrees(np.arctan2(r_vec_xyz[1], r_vec_xyz[0])), 360)
-        dec = np.mod(np.degrees(np.arcsin(r_vec_xyz[2]/r)), 360)
+        ra = np.degrees(np.arctan2(r_vec_xyz[1], r_vec_xyz[0]))
+        dec = np.degrees(np.arcsin(r_vec_xyz[2]/r))
         return ra, dec
 
     @staticmethod
-    def convert_bc_to_rbc(r_vec_bc, omega_body, delta_t):
+    def convert_bc_to_rbc(vec_bc, omega_body, delta_t):
         """
         Converts a body-centric vector to a rotating body-centric vector.
 
-        :param r_vec_bc: Body-centric position vector (km)
-        :param omega_body: Body rotation rate (rad/s)
+        :param vec_bc: Body-centric vector (km)
+        :param omega_body: Body rotation rate (deg/s)
         :param delta_t: Time change (s)
-        :return: Rotating body-centric position vector (km)
+        :return: Rotating body-centric vector (km)
         """
-        alpha = omega_body * delta_t
-        Q_bc_rbc = OrbitalBase.Q_from_Euler_angles(alpha, pattern="z")
-        return Q_bc_rbc @ r_vec_bc
+        Q_bc_rbc = OrbitalBase.Q_from_Euler_angles(omega_body * delta_t, pattern="z")
+        return Q_bc_rbc @ vec_bc
 
     #####   Rotation   #####
     @staticmethod
@@ -759,6 +822,24 @@ class OrbitalBase:
         # Convert to degrees and subtract from 90° to obtain the flight path angle
         return 90 - np.degrees(gamma)
 
+    def add_oblateness_correction(self, J2=1.0826e-3, body1radius=None):
+        """
+        Adds the oblateness correction parameters to the orbit.
+        """
+        if body1radius is None and self.body1radius is None:
+            raise ValueError("Can't add oblateness correction without body radius.")
+        elif body1radius is not None:
+            self.body1radius = body1radius
+        
+        self.Omega_dot, self.omega_dot = self.omega_dot_oblateness_correction(J2, self.mu, self.body1radius, self.i, self.e, self.a)
+        self.J2 = J2
+
+    def add_main_body_rotation(self, omega_body=np.degrees(7.292115e-5)):
+        """
+        Adds the main body rotation to the orbit.
+        """
+        self.omega_body = omega_body
+
     #######   Alternative variables   #######
     def M_from_E(self, E):
         """
@@ -840,7 +921,6 @@ class OrbitalBase:
         else:
             raise ValueError("Can't calculate eccentric anomaly from true anomaly for parabolic orbits.")
 
-
     #######   Distance   #######
     def r_avg_by_theta(self):
         """
@@ -867,6 +947,16 @@ class OrbitalBase:
         theta = np.radians(theta)
         return self.h**2 / (self.mu) * 1/(1 + self.e * np.cos(theta))
 
+    #######   Rotation   #######
+    def Q_bc_peri(self, t_clock):
+        """
+        Calculates the direction cosine matrix from perifocal frame to bodycentric frame at time t0.
+        """
+        delta_t = t_clock - self.t0_clock
+        return self.Q_from_Euler_angles(self.Omega + self.Omega_dot * delta_t,
+                                        self.i, 
+                                        self.omega + self.omega_dot * delta_t,
+                                        pattern="classical")
 
     #######   Velocities   #######
     def v_esc(self, r):
@@ -948,13 +1038,12 @@ class OrbitalBase:
         if self.e < 1 or self.e > 1: # elliptical or hyperbolic
             M = self.M_at_t_orbit(t_orbit)
             E = self.E_from_M(M)
-            return np.mod(self.theta_from_E(E), 360)
+            return self.theta_from_E(E) + self.step_function(t_orbit, self.T) * 360
         else: # parabolic
             M = self.M_at_t_orbit(t_orbit)
             M = np.radians(M)
             z = (3*M + np.sqrt(1 + 9*M**2))**(1/3)
-            theta = np.degrees(2 * np.arctan(z - 1/z))
-            return np.mod(theta, 360)
+            return np.degrees(2 * np.arctan(z - 1/z))
 
     def theta_at_state_vectors(self, r_vec, v_vec):
         """
@@ -997,56 +1086,68 @@ class OrbitalBase:
         if self.e < 1 or self.e > 1: # elliptical or hyperbolic
             E = self.E_from_theta(theta)
             M = self.M_from_E(E)
-            return self.t_orbit_at_M(M)
+            return self.t_orbit_at_M(M) + self.step_function(theta, 360) * self.T
         else: # parabolic
             M = self.M_from_theta(theta)
             return self.t_orbit_at_M(M)
 
+    def t_clock_at_theta(self, theta):
+        """
+        Calculates the clock time using the true anomaly.
+        """
+        t_orbit = self.t_orbit_at_theta(theta)
+        return t_orbit + self.time_offset
 
     #######   State vectors   #######
     def r_vec_at_theta(self, theta, frame="perifocal"):
         """
         Calculates the position vector at a given true anomaly, in a given frame of reference.
         """
-        theta_rad = np.radians(theta)
-        if frame == "perifocal":
-            return self.h**2 / (self.mu * (1 + self.e*np.cos(theta_rad))) * np.array([np.cos(theta_rad), np.sin(theta_rad), 0])
-        elif frame == "bodycentric":
-            return self.Q_bc_peri.T @ self.r_vec_at_theta(theta, frame="perifocal")
-        elif frame == "rotatingBodycentric":
-            return OrbitalBase.convert_bc_to_rbc(self.r_vec_at_theta(theta, frame="bodycentric"), self.omega_body)
-        else:
-            raise ValueError("Invalid frame of reference.")
+        r_vec, v_vec = self.state_vectors_at_theta(theta, frame)
+        return r_vec
     
     def v_vec_at_theta(self, theta, frame="perifocal"):
         """
         Calculates the velocity vector at a given true anomaly, in a given frame of reference.
         """
-        theta_rad = np.radians(theta)
-        if frame == "perifocal":
-            return self.mu / self.h * np.array([-np.sin(theta_rad), self.e + np.cos(theta_rad), 0])
-        elif frame == "bodycentric":
-            return self.Q_bc_peri.T @ self.v_vec_at_theta(theta, frame="perifocal")
-        elif frame == "rotatingBodycentric":
-            return self.convert_bc_to_rbc(self.v_vec_at_theta(theta, frame="bodycentric"), self.omega_body)
-        else:
-            raise ValueError("Invalid frame of reference.")    
-
-    
+        r_vec, v_vec = self.state_vectors_at_theta(theta, frame)
+        return v_vec
 
     def state_vectors_at_theta(self, theta, frame="perifocal"):
         """
-        Calculates the state vector at a given true anomaly, in a given frame of reference.
+        Calculates the state vectors at a given true anomaly, in a given frame of reference, at time t0.
+
+        :param theta: True anomaly (degrees)
+        :param frame: Frame of reference to calculate the position vector
         """
         if frame == "perifocal":
-            r_vec = self.r_vec_at_theta(theta, frame)
-            v_vec = self.v_vec_at_theta(theta, frame)
+            theta_rad = np.radians(theta)
+            r_vec = self.h**2 / (self.mu * (1 + self.e*np.cos(theta_rad))) * np.array([np.cos(theta_rad), np.sin(theta_rad), 0])
+            v_vec = self.mu / self.h * np.array([-np.sin(theta_rad), self.e + np.cos(theta_rad), 0])
+        elif frame == "perifocal_t0":
+            if not self.omega_dot and not self.Omega_dot:
+                return self.state_vectors_at_theta(theta, frame="perifocal")
+            else:
+                r_vec_bc, v_vec_bc = self.state_vectors_at_theta(theta, frame="bodycentric")
+                r_vec = self.Q_bc_perit0 @ r_vec_bc
+                v_vec = self.Q_bc_perit0 @ v_vec_bc
         elif frame == "bodycentric":
-            r_vec = self.r_vec_at_theta(theta, frame="bodycentric")
-            v_vec = self.v_vec_at_theta(theta, frame="bodycentric")
+            if not self.omega_dot and not self.Omega_dot:
+                Q_bc_peri = self.Q_bc_perit0
+            else:
+                t_orbit = self.t_orbit_at_theta(theta)
+                t_clock = t_orbit + self.time_offset
+                Q_bc_peri = self.Q_bc_peri(t_clock)
+            r_vec_peri, v_vec_peri = self.state_vectors_at_theta(theta, frame="perifocal")
+            r_vec = Q_bc_peri.T @ r_vec_peri
+            v_vec = Q_bc_peri.T @ v_vec_peri
+
         elif frame == "rotatingBodycentric":
-            r_vec = self.r_vec_at_theta(theta, frame="rotatingBodycentric")
-            v_vec = self.v_vec_at_theta(theta, frame="rotatingBodycentric")
+            t_orbit = self.t_orbit_at_theta(theta)
+            t_clock = t_orbit + self.time_offset
+            delta_t = t_clock - self.t0_clock
+            r_vec = self.convert_bc_to_rbc(self.r_vec_at_theta(theta, frame="bodycentric"), self.omega_body, delta_t)
+            v_vec = self.convert_bc_to_rbc(self.v_vec_at_theta(theta, frame="bodycentric"), self.omega_body, delta_t)
         else:
             raise ValueError("Invalid frame of reference.")
         return r_vec, v_vec
@@ -1055,40 +1156,28 @@ class OrbitalBase:
         """
         Finds the position and velocity vectors at a given time.
         """
-        if frame == "perifocal":
-            theta = self.theta_at_t_clock(t_clock)
-            r_vec, v_vec = self.state_vectors_at_theta(theta, frame="perifocal")
-        elif frame == "bodycentric":
-            r_vec_peri, v_vec_peri = self.state_vectors_at_t_clock(t_clock, frame="perifocal")
-            r_vec = self.Q_bc_peri.T @ r_vec_peri
-            v_vec = self.Q_bc_peri.T @ v_vec_peri
-        elif frame == "rotatingBodycentric":
-            delta_t = t_clock - self.t0_clock
-            r_vec_bc, v_vec_bc = self.state_vectors_at_t_clock(t_clock, frame="bodycentric")
-            r_vec = self.convert_bc_to_rbc(r_vec_bc, self.omega_body, delta_t)
-            v_vec = self.convert_bc_to_rbc(v_vec_bc, self.omega_body, delta_t)
-        else:
-            raise ValueError("Invalid frame of reference.")
-        return r_vec, v_vec
-
-
+        theta = self.theta_at_t_clock(t_clock)
+        return self.state_vectors_at_theta(theta, frame=frame)
+    
     #######   Adding Points   #######
-    def add_orbital_position(self, theta, t=None, name=None):
+    def add_orbital_position(self, theta, t_clock=None, name=None):
         """
         Adds an orbital position to the orbit at a given true anomaly and (optionally) time.
 
         :param theta: True anomaly (degrees)
-        :param t: Time (s), default is None
+        :param t_clock: Time (s), default is None
         :param name: Name of the position, default is None
         """
         r = self.r_at_theta(theta)
         v = self.v_at_r(r)
+        if t_clock is None:
+            t_clock = self.t_clock_at_theta(theta)
         position = {
             'name': name,
             'r': r,
             'v': v, 
             'theta': theta,
-            't': t
+            't_clock': t_clock
         }
         
         self.positions.append(position)
@@ -1111,13 +1200,13 @@ class OrbitalBase:
         State vectors are always given in perifocal frame.
         """
         self.theta0 = theta0
+        self.t0_clock = t0_clock
+        self.t0_orbit = self.t_orbit_at_theta(self.theta0)
+        self.time_offset = self.t0_clock - self.t0_orbit
         self.r_vec_0, self.v_vec_0 = self.state_vectors_at_theta(theta0, frame="perifocal")
         self.r0 = np.linalg.norm(self.r_vec_0)
         self.v0 = np.linalg.norm(self.v_vec_0)
         self.vr0 = np.dot(self.r_vec_0, self.v_vec_0)/self.r0
-        self.t0_clock = t0_clock
-        self.t0_orbit = self.t_orbit_at_theta(self.theta0)
-        self.time_offset = self.t0_clock - self.t0_orbit
         if add_position:
             self.add_orbital_position(self.theta0, self.t0_clock, name="Initial Position")
 
@@ -1137,7 +1226,6 @@ class OrbitalBase:
         """
         Adds a trajectory in the orbital plane between two given true anomalies.
         """
-
         point = {
             'r': r,
             'theta': theta,
@@ -1146,7 +1234,7 @@ class OrbitalBase:
         
         self.trajectory_points.append(point)
     
-    def trajectory(self, theta1=360, t1_clock=None, n_points=20, add_trajectory_points=True):
+    def trajectory(self, theta1=360, t1_clock=None, n_points=20):
         """
         Calculates the trajectory between two true anomalies or times.
 
@@ -1155,59 +1243,32 @@ class OrbitalBase:
         :param n_points: Number of points to evaluate the trajectory (optional, default is 20)
         :param add_trajectory_points: Boolean to add the trajectory points to the orbit (optional, default is True)
         """
-        
         # Minimum interval (s) between points
-        min_interval = 10
-        
         if t1_clock is None:
             # If t1 is not provided, calculate from theta1
-            if self.e < 1: # elliptical and circular
-                # Calculate number of complete orbits
-                n_orbits = int(theta1 / 360)
-                
-                # Calculate angle within first orbit
-                theta1_norm = theta1 % 360
-                
-                # Calculate time for normalized angle
-                self.t1_orbit = self.t_at_theta(theta1_norm)
-                
-                # Add time for complete orbits
-                self.t1_orbit += n_orbits * self.T
-                
-                # Ensure t1_orbit is greater than t0_orbit
-                while self.t1_orbit < self.t0_orbit:
-                    self.t1_orbit += self.T
-            else: # parabolic and hyperbolic
-                self.t1_orbit = self.t_at_theta(theta1)
-            
+            self.t1_orbit = self.t_orbit_at_theta(theta1)
             self.t1_clock = self.time_offset + self.t1_orbit
         else:
             self.t1_clock = t1_clock
-            self.t1_orbit = self.t1_clock - self.time_offset
+            self.t1_orbit = t1_clock - self.time_offset
         
-        
-
         # Add final position
         theta1 = self.theta_at_t_clock(self.t1_clock)
         self.add_orbital_position(theta1, self.t1_clock, name='Final Position')
         
         # Ensure interval between points is not smaller than min_interval
+        min_interval = 10
         n_points = min(n_points, max(2, int((self.t1_clock - self.t0_clock) / min_interval)))
         t_eval = np.linspace(self.t0_clock, self.t1_clock, n_points)
 
         # Calculate trajectory for each evaluation point
-        theta_prev = self.theta0
         for t_clock in t_eval:
             theta = self.theta_at_t_clock(t_clock)
-            if theta < theta_prev:
-                theta += 360
             r = self.r_at_theta(theta)
-            if add_trajectory_points:
-                self.add_trajectory_points(r, theta, t_clock)
-            theta_prev = theta
+            self.add_trajectory_points(r, theta, t_clock)
 
     #######   Plotting   #######
-    def plot(self, orbit=True, points=True, positions=True, velocities=True, trajectory=True, frame="perifocal", plot3d=True):
+    def plot(self, orbit=True, points=True, positions=True, velocities=True, trajectory=True, frame="perifocal", plot3d=True, groundtrack=False):
         """
         Plots the orbit with optional points and velocities.
 
@@ -1217,25 +1278,72 @@ class OrbitalBase:
         :param velocities: Boolean to plot the velocities
         :param trajectory: Boolean to plot the trajectory
         :param frame: Frame of reference to plot the orbit
+
+        Frames of reference:
+        Perifocal frame is the frame with the origin at the primary body center, with:
+            x-axis is along the periapsis
+            y-axis is inside the orbital plane
+            z-axis is along the angular momentum vector
+            if the orbit is precessing, the x-axis continuously tracks the periapsis position,
+            making this a non-inertial reference frame
+        
+        Perifocal_t0 frame is a inertial frame with the origin at the primary body center, with:
+            x-axis is along the periapsis at time t0
+            y-axis is inside the orbital plane
+            z-axis is along the angular momentum vector
+            This is an inertial frame. If the orbit is precessing,
+            the x-axis will not track the periapsis position, but will remain fixed at the initial periapsis position.
+
+        Bodycentric frame is a inertial frame with the origin at the primary body center, with:
+            x-axis is inside the equatorial plane, along a predifined direction. If main body is Earth, vernal equinox is used.
+            y-axis is perpendicular to the x-axis and in the equatorial plane
+            z-axis is pointing to the north pole of the main body
+        
+        rotatingBodycentric frame is the same as bodycentric frame, but the x-axis is rotating with the main body, with:
+            x-axis is inside the equatorial plane, along a predifined direction. At time t0, the x-axis coincides with bodycentric x-axis.
+            y-axis is perpendicular to the x-axis and in the equatorial plane
+            z-axis is pointing to the north pole of the main body
+            The x-axis will rotate with the main body, making this a non-inertial reference frame.
+
+        RotatingBarycentric frame is non-inertial frame with the origin at the barycenter of the system, with:
+            x-axis is pointing to the secondary body m2
+            y-axis is inside the orbital plane of m1 and m2
+            z-axis is perpendicular to the orbital plane of m1 and m2
+            The x-axis will rotate with the secondary body, making this a non-inertial reference frame.
+            This frame is valid only if the two bodies are in circular orbit (will implement for elliptical orbits later)
+            This frame is useful for plotting missions from one body to another, as well as to the Lagrange points.
         """
         fig = plt.figure(figsize=(16, 9))
         if plot3d:
             ax = fig.add_subplot(projection='3d')
         else:
             ax = fig.add_subplot()
-        # List of colors
-        colors = ['red', 'orange', 'purple', 'brown', 'deeppink', 'olive', 'deepskyblue', 'blue', 'green']
-
-        def draw_orbit():
+        
+        def draw_orbit(t_clock=0):
             scale = self.rp  # Scale for auxiliary vectors
-            # Angular momentum vector
-            h_vec = self.h_vec_bc/self.h * scale #frame bodycentric
-            # Eccentricity vector
-            e_vec = self.e_vec_bc/self.e * scale #frame bodycentric
             if frame == "perifocal":
-                h_vec = self.Q_bc_peri @ h_vec
-                e_vec = self.Q_bc_peri @ e_vec
+                h_vec = self.Q_bc_peri(self.t1_clock) @ self.h_vec_bc
+                e_vec = self.Q_bc_peri(self.t1_clock) @ self.e_vec_bc
+                n_vec = self.Q_bc_peri(self.t1_clock) @ self.n_vec_bc
+            elif frame == "perifocal_t0":
+                h_vec = self.Q_bc_perit0 @ self.h_vec_bc
+                e_vec = self.Q_bc_perit0 @ self.e_vec_bc
+                n_vec = self.Q_bc_perit0 @ self.n_vec_bc
             
+            ### Scaling vectors for plotting ###
+            if self.h == 0:
+                h_vec = [0, 0, 0]
+            else:
+                h_vec = self.h_vec_bc/self.h * scale
+            if self.n == 0:
+                n_vec = [0, 0, 0]
+            else:
+                n_vec = self.n_vec_bc/self.n * scale
+            if self.e == 0:
+                e_vec = [0, 0, 0]
+            else:
+                e_vec = self.e_vec_bc/self.e * scale
+
             # Create array of true anomaly
             if self.e == 1:
                 theta_min = -120
@@ -1266,12 +1374,14 @@ class OrbitalBase:
             # Plot orbit
             if plot3d:
                 ax.plot(r_vecs[:,0], r_vecs[:,1], r_vecs[:,2], 'b-', label='Orbit', linewidth=2)
-                ax.quiver(0, 0, 0, h_vec[0], h_vec[1], h_vec[2], color='g', label='h')
-                ax.quiver(0, 0, 0, e_vec[0], e_vec[1], e_vec[2], color='r', label='e')
+                ax.quiver(0, 0, 0, h_vec[0], h_vec[1], h_vec[2], color='g', label='h - Angular Momentum')
+                ax.quiver(0, 0, 0, e_vec[0], e_vec[1], e_vec[2], color='r', label='e - Eccentricity')
+                ax.quiver(0, 0, 0, n_vec[0], n_vec[1], n_vec[2], color='y', label='n - Ascending Node')
             else:
                 ax.plot(r_vecs[:,0], r_vecs[:,1], 'b-', label='Orbit', linewidth=2, zorder=1)
                 ax.quiver(0, 0, h_vec[0], h_vec[1], color='g', label='h', scale_units='xy', scale=1, width=0.003)
                 ax.quiver(0, 0, e_vec[0], e_vec[1], color='r', label='e', scale_units='xy', scale=1, width=0.003)
+                ax.quiver(0, 0, n_vec[0], n_vec[1], color='y', label='n', scale_units='xy', scale=1, width=0.003)
 
         def draw_body(x_center, y_center, z_center=0, index=1, radius=None, color=None, label=None):
             if index == 1:
@@ -1288,21 +1398,38 @@ class OrbitalBase:
                     color = 'blue'
                 if label is None:
                     label = 'Secondary Body'
-            
-            if plot3d:
-                if radius is not None:
+
+            if radius is not None:
+                if index == 1:
+                    #equator line
+                    phi = np.linspace(0, 2 * np.pi, 36)
+                    #equator vector in bodycentric frame
+                    equator_vec_bc = np.array([x_center + radius * np.cos(phi),
+                                            y_center + radius * np.sin(phi),
+                                            z_center * np.ones(np.size(phi))])
+                    if frame == "perifocal":
+                        equator_vec = self.Q_bc_peri(self.t1_clock) @ equator_vec_bc
+                    elif frame == "perifocal_t0":
+                        equator_vec = self.Q_bc_perit0 @ equator_vec_bc
+                    else:
+                        equator_vec = equator_vec_bc
+                if plot3d:
                     u = np.linspace(0, 2 * np.pi, 36)
                     v = np.linspace(0, np.pi, 36)
                     x = x_center + radius * np.outer(np.cos(u), np.sin(v))
                     y = y_center + radius * np.outer(np.sin(u), np.sin(v))
                     z = z_center + radius * np.outer(np.ones(np.size(u)), np.cos(v))
                     ax.plot_surface(x, y, z, color=color, alpha=0.4, label=label)
+                    if index == 1:
+                        ax.plot(equator_vec[0], equator_vec[1], equator_vec[2], color='gray', label='Equator')
                 else:
-                    ax.plot(x_center, y_center, z_center, 'o', color=color, label=label)
-            else:
-                if radius is not None:
                     circle = plt.Circle((x_center, y_center), radius, color=color, alpha=0.4, label=label, zorder=2)
                     plt.gca().add_patch(circle)
+                    if index == 1:
+                        ax.plot(equator_vec[0], equator_vec[1], color='gray', label='Equator')
+            else:
+                if plot3d:
+                    ax.plot(x_center, y_center, z_center, 'o', color=color, label=label)
                 else:
                     plt.plot(x_center, y_center, 'o', color=color, label=label, zorder=2)
             
@@ -1310,7 +1437,9 @@ class OrbitalBase:
             if self.points_in_orbital_plane:
                 for i, point in enumerate(self.points_in_orbital_plane):
                     label = point['name']
-                    color = 'gray'
+                    # List of colors
+                    colors = ['red', 'purple', 'brown', 'deeppink', 'olive', 'deepskyblue', 'green']
+                    color = colors[i % len(colors)]
                     r_vec = self.r_vec_at_theta(point['theta'], frame=frame)
                     if plot3d:
                         ax.plot(r_vec[0], r_vec[1], r_vec[2], 'o', color=color, label=label)
@@ -1321,63 +1450,54 @@ class OrbitalBase:
             if self.positions:
                 for i, position in enumerate(self.positions):
                     label = position.get('name', f'Position {i+1}')
-                    color = colors[i % len(colors)]  # Recycle colors if there are more points than colors
-                    r_vec = self.r_vec_at_theta(position['theta'], frame=frame)
-                    if position['t'] is not None:
-                        label += f' (t={position["t"]:.2f}s)'
-                    # Plot the secondary body if provided
+                    r_vec, v_vec = self.state_vectors_at_theta(position['theta'], frame=frame)
+                    if groundtrack:
+                        r_vec = r_vec / np.linalg.norm(r_vec) * self.body1radius
+                    if position['t_clock'] is not None:
+                        label += f' (t={position['t_clock']:.2f}s)'
+                    t_norm = (position['t_clock'] - self.t0_clock) / (self.t1_clock - self.t0_clock)
+                    color = self.color_gradient(t_norm)
+                    # Plot the secondary body or a marker if no secondary body is provided
                     draw_body(r_vec[0], r_vec[1], r_vec[2], index=2, radius=self.body2radius, color=color, label=label)
                     
                     # Plot velocity vector
                     if velocities:
-                        v_vec = self.v_vec_at_theta(position['theta'], frame=frame)
                         v_vec = v_vec * self.p/20  # Velocity vector scale
+                        if groundtrack:
+                            v_r = np.dot(v_vec, r_vec/np.linalg.norm(r_vec))
+                            v_vec = v_vec - v_r * r_vec/np.linalg.norm(r_vec)
                         if plot3d:
-                            ax.quiver(r_vec[0], r_vec[1], r_vec[2], v_vec[0], v_vec[1], v_vec[2], color='r')
+                            ax.quiver(r_vec[0], r_vec[1], r_vec[2], v_vec[0], v_vec[1], v_vec[2], color=color)
                         else:
-                            ax.quiver(r_vec[0], r_vec[1], v_vec[0], v_vec[1], color='r', scale_units='xy', scale=1, width=0.003, zorder=5)
+                            ax.quiver(r_vec[0], r_vec[1], v_vec[0], v_vec[1], color=color, scale_units='xy', scale=1, width=0.003, zorder=5)
 
         def draw_trajectory():
             if self.trajectory_points:
-                x_points = []
-                y_points = []
-                z_points = []
                 annotations = []  # List to store all annotations
-
                 # Trajectory points for annotations
                 for point in self.trajectory_points:
                     r_vec = self.r_vec_at_theta(point['theta'], frame=frame)
-                    x_points.append(r_vec[0])
-                    y_points.append(r_vec[1])
-                    z_points.append(r_vec[2])
                     if point['t_clock'] is not None:
-                        t_min = min(p['t_clock'] for p in self.trajectory_points if p['t_clock'] is not None)
-                        t_max = max(p['t_clock'] for p in self.trajectory_points if p['t_clock'] is not None)
-                        
                         t_clock = point['t_clock']
-                        t_norm = (t_clock - t_min) / (t_max - t_min)
-                        
-                        r = 1 - t_norm
-                        g = 0.5
-                        b = t_norm
-                        
+                        t_norm = (t_clock - self.t0_clock) / (self.t1_clock - self.t0_clock)
+                        color = self.color_gradient(t_norm)
+                        if groundtrack:
+                            r_vec = r_vec / np.linalg.norm(r_vec) * self.body1radius
                         if plot3d:
-                            point_plot = ax.plot(r_vec[0], r_vec[1], r_vec[2], '.', color=(r,g,b),
+                            point_plot = ax.plot(r_vec[0], r_vec[1], r_vec[2], 'o', color=color,
                                                 picker=True, pickradius=5)[0]
                         else:
-                            point_plot = plt.plot(r_vec[0], r_vec[1], '.', color=(r,g,b),
+                            point_plot = plt.plot(r_vec[0], r_vec[1], 'o', color=color,
                                                 picker=True, pickradius=5, zorder=4)[0]
-                        
-                        # Create annotation
-                        annotation = plt.annotate(f't = {t_clock:.2f}s',
-                            xy=(r_vec[0], r_vec[1]), xytext=(10, 10),
-                            textcoords='offset points',
-                            bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5),
-                            arrowprops=dict(arrowstyle='->'),
-                            visible=False,
-                            zorder=10)
-                        
-                        annotations.append((point_plot, annotation))
+                            # Create annotation
+                            annotation = plt.annotate(f't = {t_clock:.2f}s',
+                                xy=(r_vec[0], r_vec[1]), xytext=(10, 10),
+                                textcoords='offset points',
+                                bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5),
+                                arrowprops=dict(arrowstyle='->'),
+                                visible=False,
+                                zorder=10)
+                            annotations.append((point_plot, annotation))
                 
                 # Hover function that manages all annotations
                 def hover(event):
@@ -1389,25 +1509,33 @@ class OrbitalBase:
                 
                 plt.gcf().canvas.mpl_connect('motion_notify_event', hover)
                 
-                # Generate high-resolution points for the continuous line
-                theta_min = min(p['theta'] for p in self.trajectory_points)
-                theta_max = max(p['theta'] for p in self.trajectory_points)
-                thetas = np.linspace(theta_min, theta_max, int(theta_max - theta_min))
-                x_line = []
-                y_line = []
-                z_line = []
-                for theta in thetas:
-                    r_vec = self.r_vec_at_theta(theta, frame=frame)
-                    x_line.append(r_vec[0])
-                    y_line.append(r_vec[1])
-                    z_line.append(r_vec[2])
-                
-                if plot3d:
-                    ax.plot(x_line, y_line, z_line, '-', color='black', label='Trajectory')
-                else:
-                    plt.plot(x_line, y_line, '-', color='black', label='Trajectory', zorder=3)
+                # Generate high resolution points for the continuous line
+                times = np.linspace(self.t0_clock, self.t1_clock, int((self.t1_clock - self.t0_clock)/60))
+                r_vecs = []
+                colors = []
 
-        if frame == "perifocal" or frame == "bodycentric" or frame == "rotatingBodycentric":
+                for t in times:
+                    r_vec = self.state_vectors_at_t_clock(t, frame=frame)[0]
+                    if groundtrack:
+                        r_vec = r_vec / np.linalg.norm(r_vec) * self.body1radius
+                    t_norm = (t - self.t0_clock) / (self.t1_clock - self.t0_clock)
+                    r_vecs.append(r_vec)
+                    colors.append(self.color_gradient(t_norm))
+
+                # Convert to numpy array for better performance
+                r_vecs = np.array(r_vecs)
+                for i in range(len(r_vecs)-1):
+                    if plot3d:
+                        ax.plot(r_vecs[i:i+2,0], r_vecs[i:i+2,1], r_vecs[i:i+2,2], 
+                                '-', color=colors[i], alpha=0.6, linewidth=2)
+                    else:
+                        plt.plot(r_vecs[i:i+2,0], r_vecs[i:i+2,1], 
+                                 '-', color=colors[i], alpha=0.6, linewidth=2, zorder=3)
+
+        if (frame == "perifocal" or
+            frame == "perifocal_t0" or
+            frame == "bodycentric" or
+            frame == "rotatingBodycentric"):
             ### Plot main body ###
             draw_body(0, 0, 0, index=1)
 
@@ -1426,7 +1554,6 @@ class OrbitalBase:
             ### Plot trajectory points ###
             if trajectory:
                 draw_trajectory()
-            
         elif frame == "rotatingBarycentric":
             plt.title('Frame: Rotating Barycentric')
 
@@ -1445,7 +1572,9 @@ class OrbitalBase:
             ### Plot trajectory points ###
             if trajectory:
                 draw_trajectory()
-        
+        else:
+            raise ValueError(f"Invalid frame: {frame}")
+
         ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left')
         ax.set_xlabel('X (km)')
         ax.set_ylabel('Y (km)')
@@ -1458,34 +1587,133 @@ class OrbitalBase:
         plt.get_current_fig_manager().window.showMaximized()
         plt.show()
 
+    def plot_groundtrack(self, frame="rotatingBodycentric"):
+        """
+        Plots the groundtrack of the orbit.
+        """
+        fig = plt.figure(figsize=(16, 9))
+        ax = fig.add_subplot()
+
+        ########### Plot trajectory points ###########
+        if not self.trajectory_points:
+            raise ValueError("No trajectory points to plot.")
+        
+        annotations = []  # List to store all annotations        
+        # Trajectory points for annotations
+        for point in self.trajectory_points:
+            r_vec = self.r_vec_at_theta(point['theta'], frame=frame)
+            ra, dec = self.convert_cartesian_to_ra_dec(r_vec)
+            if point['t_clock'] is not None:
+                t_clock = point['t_clock']
+                t_norm = (t_clock - self.t0_clock) / (self.t1_clock - self.t0_clock)
+                color = self.color_gradient(t_norm)
+                
+                point_plot = plt.plot(ra, dec, 'o', color=color,
+                                        picker=True, pickradius=5,
+                                        markersize=5, zorder=4)[0]
+                
+                # Create annotation
+                annotation = plt.annotate(f't = {t_clock:.2f}s',
+                    xy=(ra, dec), xytext=(10, 10),
+                    textcoords='offset points',
+                    bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5),
+                    arrowprops=dict(arrowstyle='->'),
+                    visible=False,
+                    zorder=10)
+                
+                annotations.append((point_plot, annotation))
+        
+        # Hover function that manages all annotations
+        def hover(event):
+            if event.inaxes == plt.gca():
+                for point_plot, annotation in annotations:
+                    cont, _ = point_plot.contains(event)
+                    annotation.set_visible(cont)
+                plt.draw()
+        
+        plt.gcf().canvas.mpl_connect('motion_notify_event', hover)
+        
+        ##### Continuous line #####
+        times = np.linspace(self.t0_clock, self.t1_clock, int((self.t1_clock - self.t0_clock)/20))
+        for t in times:
+            r_vec = self.state_vectors_at_t_clock(t, frame=frame)[0]
+            ra, dec = self.convert_cartesian_to_ra_dec(r_vec)
+            t_norm = (t - self.t0_clock) / (self.t1_clock - self.t0_clock)
+            color = self.color_gradient(t_norm)
+            plt.plot(ra, dec, '.', color=color,
+                     alpha=0.6, markersize=3, zorder=3)
+
+        
+        ########### Plot positions ###########
+        if self.positions:
+            for i, position in enumerate(self.positions):
+                label = position.get('name', f'Position {i+1}')           
+                r_vec = self.r_vec_at_theta(position['theta'], frame=frame)
+                if position['t_clock'] is not None:
+                    label += f' (t={position['t_clock']:.2f}s)'
+                t_norm = (position['t_clock'] - self.t0_clock) / (self.t1_clock - self.t0_clock)
+                color = self.color_gradient(t_norm)
+                ra, dec = self.convert_cartesian_to_ra_dec(r_vec)
+                plt.plot(ra, dec, 'o', color=color, label=label,
+                         markersize=8, zorder=5)
+
+        ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left')
+        ax.set_xlabel('Right Ascension (°)')
+        ax.set_ylabel('Declination (°)')
+        ax.set_xlim(-180, 180)
+        ax.set_ylim(-90, 90)
+        ax.grid(True)
+        ax.axhline(y=0, color='k', linestyle='-', linewidth=1)
+        ax.axvline(x=0, color='k', linestyle='-', linewidth=1)
+
+        # Add text for coordinates
+        coord_text = ax.text(0.02, 0.98, '', transform=ax.transAxes, 
+                            bbox=dict(facecolor='white', alpha=0.7),
+                            verticalalignment='top')
+
+        # Show coordinates on hover
+        def update_coords(event):
+            if event.inaxes == ax:
+                ra = event.xdata
+                dec = event.ydata
+                coord_text.set_text(f'RA: {ra:.2f}°\nDec: {dec:.2f}°')
+                plt.draw()
+
+        plt.gcf().canvas.mpl_connect('motion_notify_event', update_coords)
+
+        plt.title(f'Groundtrack')
+        plt.tight_layout()
+        plt.get_current_fig_manager().window.showMaximized()
+        plt.show()
+
     ####### String representation #######
     def __str__(self):
         """
         Returns a string representation of the orbital parameters.
         """
         # Get all attributes of the class
-        atributos = vars(self)
+        attributes = vars(self)
         # Initial string
-        resultado = "Orbital Parameters:\n"
+        result = "Orbital Parameters:\n"
         # Add each attribute to the string
-        for nome, valor in atributos.items():
+        for name, value in attributes.items():
             # Skip attributes that are None or that should not be shown
-            if valor is None or nome in ['points_in_orbital_plane', 'positions', 'trajectory_points']:
+            if value is None or name in ['points_in_orbital_plane', 'positions', 'trajectory_points']:
                 continue
                 
             # Format numbers as float with 3 decimal places
-            if isinstance(valor, (int, float)):
-                resultado += f"{nome}: {valor:.3f}\n"
+            if isinstance(value, (int, float)):
+                result += f"{name}: {value:.3f}\n"
             else:
-                resultado += f"{nome}: {valor}\n"
+                result += f"{name}: {value}\n"
 
-        return resultado
+        return result
 
 
 
 
 class Orbit(OrbitalBase):
-    def __init__(self, mu=None, m1=None, m2=0, a=None, e=None, rp=None, ra=None, h=None, Omega=None, i=None, omega=None, theta0=None, t0_clock=0, body1radius=None, body2radius=None):
+    def __init__(self, mu=None, m1=None, m2=0, a=None, e=None, rp=None, ra=None, h=None, Omega=None, i=None, omega=None, theta0=0, t0_clock=0, body1radius=None, body2radius=None):
         """
         Initializes the Orbit class with primary orbital parameters.
         :param mu: Standard gravitational parameter (km³/s²)
@@ -1555,12 +1783,18 @@ class Orbit(OrbitalBase):
         self.p = self.p_from_mu_h(self.mu, self.h)
         self.alpha = self.alpha_from_a(self.a)
 
+        self.Omega = Omega
+        self.i = i
+        self.omega = omega
+        self.theta0 = theta0
+        self.t0_clock = t0_clock
+        self.t1_clock = None
+        self.Omega_dot = None
+        self.omega_dot = None
+        self.omega_body = None
+        self.add_zero_state_from_theta(theta0, t0_clock, add_position=True)
         if Omega is not None and i is not None and omega is not None and theta0 is not None:
-            self.Omega = Omega
-            self.i = i
-            self.omega = omega
-            self.theta0 = theta0
-            self.Q_bc_peri = self.Q_from_Euler_angles(Omega, i, omega, pattern="classical")
+            self.Q_bc_perit0 = self.Q_from_Euler_angles(Omega, i, omega, pattern="classical")
             self.r_vec_bc, self.v_vec_bc = self.state_vectors_at_theta(theta0, frame="bodycentric")
             self.h_vec_bc = self.h_vec_from_state_vectors(self.r_vec_bc, self.v_vec_bc)
             self.e_vec_bc = self.e_vec_from_mu_state_vectors(self.mu, self.r_vec_bc, self.v_vec_bc)
@@ -1568,8 +1802,6 @@ class Orbit(OrbitalBase):
             self.r = np.linalg.norm(self.r_vec_bc)
             self.v = np.linalg.norm(self.v_vec_bc)
             self.n = np.linalg.norm(self.n_vec_bc)
-
-        self.add_zero_state_from_theta(theta0, t0_clock, add_position=True)
 
     @classmethod
     def init_from_2positions(cls, r1, theta1, r2, theta2, mu=None, m1=None, m2=0, body1radius=None, body2radius=None):

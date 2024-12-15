@@ -19,10 +19,10 @@ e = 1.4
 i = 30
 Omega = 40
 omega = 60
-theta = 30
+theta0 = 30
 
-orbita = Orbit(m1=M_earth, m2=0, h=h, e=e, i=i, Omega=Omega, omega=omega, theta=theta, body1radius=R_terra)
-r_vec, v_vec = orbita.state_vectors_at_theta(theta, frame="bodycentric")
+orbita = Orbit(m1=M_earth, m2=0, h=h, e=e, i=i, Omega=Omega, omega=omega, theta0=theta0, body1radius=R_terra)
+r_vec, v_vec = orbita.state_vectors_at_theta(theta0, frame="bodycentric")
 print(r_vec, v_vec)
 
 orbita.plot(frame="bodycentric", points=True, velocities=True, positions=True, trajectory=False, plot3d=True)
