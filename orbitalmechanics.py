@@ -8,6 +8,14 @@ class OrbitalBase:
     Base class for all orbital mechanics classes.
     """
     G = 6.67430e-20  # Gravitational constant in km^3/kg/s^2
+    M_earth = 5.9722e24 # Earth mass in kg
+    R_earth = 6378.137 # Earth equatorial radius in km
+    w_earth = 0.00417807413 # Earth rotation rate in deg/s
+    J2_earth = 1.08263e-3 # Earth oblateness coefficient
+    M_moon = 7.34767309e22 # Moon mass in kg
+    R_moon = 1737.4 # Moon equatorial radius in km
+    w_moon = 0.000152504 # Moon rotation rate in deg/s
+    J2_moon = 2.03e-4 # Moon oblateness coefficient
 
     def __init__(self):
         self.points_in_orbital_plane = []
@@ -15,6 +23,7 @@ class OrbitalBase:
         self.trajectory_points = []
     
     ########################   Calculations   ########################
+    
     #####   mu   #####
     @classmethod
     def mu_from_m1_m2(cls, m1, m2=0):
@@ -200,7 +209,9 @@ class OrbitalBase:
         else:
             cos_theta = np.dot(e_vec, r_vec)/(e * r)
             sin_theta = np.dot(h_vec, np.cross(e_vec, r_vec))/(h * e * r)
-            theta = np.mod(np.degrees(np.arctan2(sin_theta, cos_theta)), 360)
+            theta = np.degrees(np.arctan2(sin_theta, cos_theta))
+            if e < 1:
+                theta = np.mod(theta, 360)
         return theta
 
     #####   rp   #####
@@ -710,6 +721,49 @@ class OrbitalBase:
         Q_bc_rbc = OrbitalBase.Q_from_Euler_angles(omega_body * delta_t, pattern="z")
         return Q_bc_rbc @ vec_bc
 
+    @staticmethod
+    def JD_from_date_UT(y, m, d, h=0, min=0, s=0):
+        """
+        Calculates the Julian date from Calendar date and Universal Time.
+        Valid for years 1901-2099.
+        """
+        if y < 1901 or y > 2099:
+            raise ValueError("Year must be between 1901 and 2099.")
+        
+        return 367*y - int(7*(y + int((m + 9)/12))/4) + int(275*m/9) + d + 1721013.5 + (h + min/60 + s/3600)/24
+
+    @staticmethod
+    def T0_from_J0(J0):
+        """
+        Calculates the Julian centuries from the Julian day.
+        """
+        return (J0 - 2451545.0) / 36525
+    
+    @staticmethod
+    def Greenwich_sideral_0_from_J0(J0):
+        """
+        Calculates the Greenwich sideral time from the Julian date.
+        """
+        T0 = OrbitalBase.T0_from_J0(J0)
+        return np.mod(100.4606184 + 36000.77004*T0 + 0.000387933*T0**2 - 2.583e-8*T0**3, 360)
+    
+    @staticmethod
+    def greenwich_sideral_from_date_UT(y, m, d, h=0, min=0, s=0):
+        """
+        Calculates the Greenwich sideral time from the Universal Time.
+        """
+        J0 = OrbitalBase.JD_from_date_UT(y, m, d, 0, 0, 0)
+        theta_g0 = OrbitalBase.Greenwich_sideral_0_from_J0(J0)
+        h = h + min/60 + s/3600
+        return np.mod(theta_g0 + 360.98564724*h/24, 360)
+    
+    @staticmethod
+    def local_sideral_from_theta_g_and_longitude(theta_g, longitude):
+        """
+        Calculates the local sideral time from the Greenwich sideral time and the observer's longitude.
+        """
+        return np.mod(theta_g + longitude, 360)
+
     #####   Rotation   #####
     @staticmethod
     def Euler_angles_from_Q(Q, pattern="classical"):
@@ -822,7 +876,7 @@ class OrbitalBase:
         # Convert to degrees and subtract from 90° to obtain the flight path angle
         return 90 - np.degrees(gamma)
 
-    def add_oblateness_correction(self, J2=1.0826e-3, body1radius=None):
+    def add_oblateness_correction(self, J2=1.08263e-3, body1radius=None):
         """
         Adds the oblateness correction parameters to the orbit.
         """
@@ -834,7 +888,7 @@ class OrbitalBase:
         self.Omega_dot, self.omega_dot = self.omega_dot_oblateness_correction(J2, self.mu, self.body1radius, self.i, self.e, self.a)
         self.J2 = J2
 
-    def add_main_body_rotation(self, omega_body=np.degrees(7.292115e-5)):
+    def add_main_body_rotation(self, omega_body=0.00417807413):
         """
         Adds the main body rotation to the orbit.
         """
@@ -897,13 +951,13 @@ class OrbitalBase:
             else:
                 return self.e * np.sinh(E) - E - M
 
-        def f_prime(E, M):
+        def f_dot(E, M):
             if self.e < 1:
                 return 1 - self.e * np.cos(E)
             else:
                 return self.e * np.cosh(E) - 1
         
-        E = root_scalar(f, fprime=f_prime, x0=E0, args=(M), method='newton').root
+        E = root_scalar(f, fprime=f_dot, x0=E0, args=(M), method='newton').root
 
         return np.degrees(E)
 
@@ -915,8 +969,6 @@ class OrbitalBase:
         if self.e < 1:
             return np.degrees(2 * np.arctan(np.sqrt((1 - self.e) / (1 + self.e)) * np.tan(theta/2)))
         elif self.e > 1:
-            if np.abs(theta) > np.radians(self.theta_inf()):
-                raise ValueError(f"Can't calculate eccentric anomaly for true anomaly greater than hyperbolic infinity angle: {self.theta_inf()} degrees.")
             return np.degrees(2 * np.arctanh(np.sqrt((self.e - 1) / (self.e + 1)) * np.tan(theta/2)))
         else:
             raise ValueError("Can't calculate eccentric anomaly from true anomaly for parabolic orbits.")
@@ -1083,10 +1135,14 @@ class OrbitalBase:
         Calculates the orbit time using the true anomaly.
         t_orbit=0 is the time of the perigee passage.
         """
-        if self.e < 1 or self.e > 1: # elliptical or hyperbolic
+        if self.e < 1: # elliptical
             E = self.E_from_theta(theta)
             M = self.M_from_E(E)
             return self.t_orbit_at_M(M) + self.step_function(theta, 360) * self.T
+        elif self.e > 1: # hyperbolic
+            E = self.E_from_theta(theta)
+            M = self.M_from_E(E)
+            return self.t_orbit_at_M(M)
         else: # parabolic
             M = self.M_from_theta(theta)
             return self.t_orbit_at_M(M)
@@ -1365,18 +1421,18 @@ class OrbitalBase:
                             theta_min = pos['theta']
                         if pos['theta'] > theta_max:
                             theta_max = pos['theta']
-                theta = np.linspace(theta_min, theta_max, 360)
+                theta_list = np.linspace(theta_min, theta_max, 360)
             else:
-                theta = np.linspace(0, 360, 360)
+                theta_list = np.linspace(0, 360, 360)
             
-            r_vecs = np.array([self.r_vec_at_theta(t, frame) for t in theta])
+            r_vecs = np.array([self.r_vec_at_theta(theta, frame) for theta in theta_list])
             
             # Plot orbit
             if plot3d:
                 ax.plot(r_vecs[:,0], r_vecs[:,1], r_vecs[:,2], 'b-', label='Orbit', linewidth=2)
-                ax.quiver(0, 0, 0, h_vec[0], h_vec[1], h_vec[2], color='g', label='h - Angular Momentum')
-                ax.quiver(0, 0, 0, e_vec[0], e_vec[1], e_vec[2], color='r', label='e - Eccentricity')
-                ax.quiver(0, 0, 0, n_vec[0], n_vec[1], n_vec[2], color='y', label='n - Ascending Node')
+                ax.quiver(0, 0, 0, h_vec[0], h_vec[1], h_vec[2], color=(0,0,1), label='h - Angular Momentum')
+                ax.quiver(0, 0, 0, e_vec[0], e_vec[1], e_vec[2], color=(1,0,0), label='e - Eccentricity')
+                ax.quiver(0, 0, 0, n_vec[0], n_vec[1], n_vec[2], color=(0.8,0.8,0), label='n - Ascending Node')
             else:
                 ax.plot(r_vecs[:,0], r_vecs[:,1], 'b-', label='Orbit', linewidth=2, zorder=1)
                 ax.quiver(0, 0, h_vec[0], h_vec[1], color='g', label='h', scale_units='xy', scale=1, width=0.003)
@@ -1455,8 +1511,16 @@ class OrbitalBase:
                         r_vec = r_vec / np.linalg.norm(r_vec) * self.body1radius
                     if position['t_clock'] is not None:
                         label += f' (t={position['t_clock']:.2f}s)'
-                    t_norm = (position['t_clock'] - self.t0_clock) / (self.t1_clock - self.t0_clock)
-                    color = self.color_gradient(t_norm)
+                    if position['t_clock'] < self.t0_clock:
+                        t_min = min(position['t_clock'] for position in self.positions if position['t_clock'] is not None)
+                        t_norm = (position['t_clock'] - t_min) / (self.t0_clock - t_min)
+                        color = self.color_gradient(t_norm, [(0.5, 0, 0), (1, 0.5, 0)])
+                    else:
+                        if self.t1_clock == self.t0_clock:
+                            t_norm = 0
+                        else:
+                            t_norm = (position['t_clock'] - self.t0_clock) / (self.t1_clock - self.t0_clock)
+                        color = self.color_gradient(t_norm)
                     # Plot the secondary body or a marker if no secondary body is provided
                     draw_body(r_vec[0], r_vec[1], r_vec[2], index=2, radius=self.body2radius, color=color, label=label)
                     
@@ -1651,7 +1715,10 @@ class OrbitalBase:
                 r_vec = self.r_vec_at_theta(position['theta'], frame=frame)
                 if position['t_clock'] is not None:
                     label += f' (t={position['t_clock']:.2f}s)'
-                t_norm = (position['t_clock'] - self.t0_clock) / (self.t1_clock - self.t0_clock)
+                if self.t1_clock == self.t0_clock:
+                    t_norm = 0
+                else:
+                    t_norm = (position['t_clock'] - self.t0_clock) / (self.t1_clock - self.t0_clock)
                 color = self.color_gradient(t_norm)
                 ra, dec = self.convert_cartesian_to_ra_dec(r_vec)
                 plt.plot(ra, dec, 'o', color=color, label=label,
@@ -1788,10 +1855,10 @@ class Orbit(OrbitalBase):
         self.omega = omega
         self.theta0 = theta0
         self.t0_clock = t0_clock
-        self.t1_clock = None
-        self.Omega_dot = None
-        self.omega_dot = None
-        self.omega_body = None
+        self.t1_clock = t0_clock
+        self.Omega_dot = 0
+        self.omega_dot = 0
+        self.omega_body = 0
         self.add_zero_state_from_theta(theta0, t0_clock, add_position=True)
         if Omega is not None and i is not None and omega is not None and theta0 is not None:
             self.Q_bc_perit0 = self.Q_from_Euler_angles(Omega, i, omega, pattern="classical")
@@ -1804,7 +1871,7 @@ class Orbit(OrbitalBase):
             self.n = np.linalg.norm(self.n_vec_bc)
 
     @classmethod
-    def init_from_2positions(cls, r1, theta1, r2, theta2, mu=None, m1=None, m2=0, body1radius=None, body2radius=None):
+    def init_from_2_positions(cls, r1, theta1, r2, theta2, mu=None, m1=None, m2=0, body1radius=None, body2radius=None):
         """
         Creates a new instance of Orbit from two orbital positions (r,θ).
         
@@ -1927,8 +1994,159 @@ class Orbit(OrbitalBase):
         
         return orbit_instance
 
+    @classmethod
+    def init_from_3_vectors(cls, r1_vec, r2_vec, r3_vec, mu=None, m1=None, m2=0, body1radius=None, body2radius=None):
+        """
+        Creates a new instance of Orbit from three position vectors using Gibb's method.
+        """
+        if mu is None and m1 is not None:
+            mu = cls.G * (m1 + m2)
+        if mu is None:
+            raise ValueError("Provide mu or m1 (and optionally m2) to calculate mu.")
 
+        r1 = np.linalg.norm(r1_vec)
+        r2 = np.linalg.norm(r2_vec)
+        r3 = np.linalg.norm(r3_vec)
 
+        #C12 = np.cross(r1_vec, r2_vec)
+        #C31 = np.cross(r3_vec, r1_vec)
+        C23 = np.cross(r2_vec, r3_vec)
+
+        #check if the vectors are coplanar
+        if np.abs(np.dot(r1_vec/r1, C23/np.linalg.norm(C23))) > 1e-5:
+            raise ValueError(f"The vectors are not coplanar. dot product of r1 and C23 is {np.dot(r1_vec/r1, C23/np.linalg.norm(C23))}")
+        
+        #Calculate N, D, S
+        N_vec = r1*(np.cross(r2_vec, r3_vec)) + r2*(np.cross(r3_vec, r1_vec)) + r3*(np.cross(r1_vec, r2_vec))
+        D_vec = np.cross(r1_vec, r2_vec) + np.cross(r2_vec, r3_vec) + np.cross(r3_vec, r1_vec)
+        S_vec = r1_vec*(r2 - r3) + r2_vec*(r3 - r1) + r3_vec*(r1 - r2)
+        N = np.linalg.norm(N_vec)
+        D = np.linalg.norm(D_vec)
+        
+        #Calculate v1, v2, v3
+        v1_vec = (np.cross(D_vec, r1_vec) / r2 + S_vec) * np.sqrt(mu/(N * D))
+        v2_vec = (np.cross(D_vec, r2_vec) / r2 + S_vec) * np.sqrt(mu/(N * D))
+        v3_vec = (np.cross(D_vec, r3_vec) / r3 + S_vec) * np.sqrt(mu/(N * D))
+
+        #initialize with r2, for more accuracy
+        orbita_instance = cls.init_from_state_vectors(r2_vec, v2_vec, mu=mu, m1=m1, m2=m2, body1radius=body1radius, body2radius=body2radius)
+        theta_r2 = orbita_instance.theta0
+        theta_r1 = orbita_instance.theta_at_state_vectors(r1_vec, v1_vec)
+        theta_r3 = orbita_instance.theta_at_state_vectors(r3_vec, v3_vec)
+        if theta_r1 > theta_r2:
+            theta_r1 = theta_r1 - 360
+        if theta_r3 < theta_r2:
+            theta_r3 = theta_r3 + 360
+
+        orbita_instance.theta0 = theta_r3
+        orbita_instance.positions[0]['name'] = "Position 3 - Initial Position"
+        orbita_instance.add_orbital_position(theta=theta_r2-theta_r3, name="Position 2")
+        orbita_instance.add_orbital_position(theta=theta_r1-theta_r3, name="Position 1")
+        return orbita_instance
+
+    @classmethod
+    def init_from_2_vectors_and_delta_time(cls, r1_vec, r2_vec, delta_t, mu=None, m1=None, m2=0, body1radius=None, body2radius=None):
+        """
+        Creates a new instance of Orbit from two position vectors and the time difference between them using Lambert's problem.
+        """
+        if mu is None and m1 is not None:
+            mu = cls.G * (m1 + m2)
+        if mu is None:
+            raise ValueError("Provide mu or m1 (and optionally m2) to calculate mu.")
+        
+        r1 = np.linalg.norm(r1_vec)
+        r2 = np.linalg.norm(r2_vec)
+
+        C12 = np.cross(r1_vec, r2_vec)
+
+        #assuming a prograde orbit
+        if C12[2] >= 0:
+            delta_theta = np.degrees(np.arccos(np.dot(r1_vec, r2_vec) / (r1 * r2)))
+        else:
+            delta_theta = 360 - np.degrees(np.arccos(np.dot(r1_vec, r2_vec) / (r1 * r2)))
+        delta_theta_rad = np.radians(delta_theta)
+        A = np.sin(delta_theta_rad) * np.sqrt(r1 * r2 / (1 - np.cos(delta_theta_rad)))
+
+        def y(z):
+            return r1 + r2 + A * (z*cls.S(z) - 1) / np.sqrt(cls.C(z))
+
+        def f(z):
+            return (y(z) / cls.C(z))**(3/2) * cls.S(z) + A*np.sqrt(y(z)) - np.sqrt(mu) * delta_t
+        
+        def f_dot(z):
+            y0 = y(0)
+            if z == 0:
+                return np.sqrt(2)/40 * y0**(3/2) + A/8 * (np.sqrt(y0) + A * np.sqrt(1 / (2*y0)))
+            else:
+                return (y(z)/cls.C(z))**(3/2) * (1/(2*z) * (cls.C(z) - 3/2*cls.S(z)/cls.C(z)) + 3/4*cls.S(z)**2/cls.C(z)) + A/8 * (3*cls.S(z)/cls.C(z)*np.sqrt(y(z)) + A*np.sqrt(cls.C(z)/y(z)))
+        
+        z0 = 0
+        z = root_scalar(f, fprime=f_dot, x0=z0, method='newton').root
+        yz = y(z)
+        
+        f = 1 - yz/r1
+        g = A * np.sqrt(yz / mu)
+        g_dot = 1 - yz/r2
+
+        v1_vec = 1/g * (r2_vec - f*r1_vec)
+        v2_vec = 1/g * (g_dot*r2_vec - r1_vec)
+
+        orbita_instance = cls.init_from_state_vectors(r2_vec, v2_vec, mu=mu, m1=m1, m2=m2, body1radius=body1radius, body2radius=body2radius)
+        theta_r2 = orbita_instance.theta0
+        theta_r1 = orbita_instance.theta_at_state_vectors(r1_vec, v1_vec)
+        if theta_r1 > theta_r2:
+            theta_r1 = theta_r1 - 360
+        orbita_instance.add_orbital_position(theta=theta_r1, name="Position 1")
+        orbita_instance.positions[0]['name'] = "Position 2 - Initial Position"
+        return orbita_instance
+
+    @classmethod
+    def init_from_2_radii_delta_t_delta_theta(cls, r1, r2, delta_t, delta_theta, mu=None, m1=None, m2=0, body1radius=None, body2radius=None):
+        """
+        Creates a new instance of Orbit from two radii and the angle difference between them.
+        """
+        if mu is None and m1 is not None:
+            mu = cls.G * (m1 + m2)
+        if mu is None:
+            raise ValueError("Provide mu or m1 (and optionally m2) to calculate mu.")
+        
+        delta_theta_rad = np.radians(delta_theta)
+        A = np.sin(delta_theta_rad) * np.sqrt(r1 * r2 / (1 - np.cos(delta_theta_rad)))
+
+        def y(z):
+            return r1 + r2 + A * (z*cls.S(z) - 1) / np.sqrt(cls.C(z))
+
+        def f(z):
+            return (y(z) / cls.C(z))**(3/2) * cls.S(z) + A*np.sqrt(y(z)) - np.sqrt(mu) * delta_t
+        
+        def f_dot(z):
+            y0 = y(0)
+            if z == 0:
+                return np.sqrt(2)/40 * y0**(3/2) + A/8 * (np.sqrt(y0) + A * np.sqrt(1 / (2*y0)))
+            else:
+                return (y(z)/cls.C(z))**(3/2) * (1/(2*z) * (cls.C(z) - 3/2*cls.S(z)/cls.C(z)) + 3/4*cls.S(z)**2/cls.C(z)) + A/8 * (3*cls.S(z)/cls.C(z)*np.sqrt(y(z)) + A*np.sqrt(cls.C(z)/y(z)))
+        
+        z0 = 0
+        z = root_scalar(f, fprime=f_dot, x0=z0, method='newton').root
+        yz = y(z)
+
+        f = 1 - yz/r1
+        g = A * np.sqrt(yz / mu)
+        g_dot = 1 - yz/r2
+
+        r1_vec = np.array(cls.convert_polar_to_cartesian(r1, 0, 0))
+        r2_vec = np.array(cls.convert_polar_to_cartesian(r2, delta_theta, 0))
+        v1_vec = 1/g * (r2_vec - f*r1_vec)
+        v2_vec = 1/g * (g_dot*r2_vec - r1_vec)
+
+        orbita_instance = cls.init_from_state_vectors(r2_vec, v2_vec, mu=mu, m1=m1, m2=m2, body1radius=body1radius, body2radius=body2radius)
+        theta_r2 = orbita_instance.theta0
+        theta_r1 = orbita_instance.theta_at_state_vectors(r1_vec, v1_vec)
+        if theta_r1 > theta_r2:
+            theta_r1 = theta_r1 - 360
+        orbita_instance.add_orbital_position(theta=theta_r1, name="Position 1")
+        orbita_instance.positions[0]['name'] = "Position 2 - Initial Position"
+        return orbita_instance
 
 class Three_body_restricted(OrbitalBase):
     """
@@ -2050,4 +2268,4 @@ class Three_body_restricted(OrbitalBase):
                 r, theta = self.convert_cartesian_to_polar(point)
                 self.add_trajectory_points(r, theta)
         return sol
-    
+
