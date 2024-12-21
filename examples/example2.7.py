@@ -1,4 +1,4 @@
-from orbitalmechanics import Orbit
+from astronautica import Orbit, Body, Plotter
 import numpy as np
 
 """
@@ -17,20 +17,17 @@ Fig. 2.21. Find each of the following quantities:
 (k) maximum flight path angle γmax and the true anomaly at which it occurs
 """
 
-M_earth = 5.9722e24 # [kg]
-# Raio da Terra em km
-R_terra = 6378.137
-
+earth = Body(name="earth")
 # Altitudes do perigeu e apogeu
 zp = 400  # km 
 za = 4000  # km
 
 # Distâncias do perigeu e apogeu ao centro da Terra
-rp = R_terra + zp
-ra = R_terra + za
+rp = earth.radius + zp
+ra = earth.radius + za
 
 # Criar órbita
-orbita = Orbit(m1=M_earth, rp=rp, ra=ra, body1radius=R_terra)
+orbita = Orbit.from_apsis(earth, rp=rp, ra=ra)
 
 # a) Excentricidade
 print(f"\na) Excentricidade: {orbita.e:.4f}")
@@ -74,6 +71,8 @@ gamma_max = orbita.gamma_at_theta(theta_max)
 print(f"k) Ângulo de trajetória máximo: {gamma_max:.2f}° em theta = {theta_max:.2f}°")
 
 # Plotar a órbita
-orbita.add_orbital_position(0, name="Perigeu")
-orbita.add_orbital_position(180, name="Apogeu")
-orbita.plot()
+orbita.add_orbital_position(theta=0, name="Perigeu")
+orbita.add_orbital_position(theta=180, name="Apogeu")
+
+plotter = Plotter(frame="bodycentric", plot3d=True)
+plotter.plot_orbit(orbita)

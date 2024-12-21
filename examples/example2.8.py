@@ -1,4 +1,4 @@
-from orbitalmechanics import Orbit
+from astronautica import Orbit, Body, Plotter
 import numpy as np
 
 """
@@ -6,9 +6,7 @@ At two points on a geocentric orbit, the altitude and true anomaly are z1 = 1545
 respectively. Find (a) the eccentricity, (b) the altitude of perigee, (c) the semimajor axis, and (d) the period.
 """
 
-M_earth = 5.9722e24 # [kg]
-# Raio da Terra em km
-R_terra = 6378.137
+earth = Body(name="earth")
 
 # Dados do problema
 z1 = 1545  # km
@@ -17,17 +15,17 @@ z2 = 852   # km
 theta2 = 58  # graus
 
 # Convertendo altitudes para raios
-r1 = R_terra + z1
-r2 = R_terra + z2
+r1 = earth.radius + z1
+r2 = earth.radius + z2
 
 # Criando uma órbita a partir dos dois pontos
-orbita = Orbit.init_from_2positions(m1=M_earth, r1=r1, theta1=theta1, r2=r2, theta2=theta2, body1radius=R_terra)
+orbita = Orbit.from_2_positions(earth, r1=r1, theta1=theta1, r2=r2, theta2=theta2)
 
 # Obtendo os parâmetros orbitais
 e = orbita.e
 a = orbita.a
 periodo = orbita.T/60  # convertendo para minutos
-zp = orbita.rp - R_terra  # altitude do perigeu
+zp = orbita.rp - earth.radius  # altitude do perigeu
 
 # Imprimindo resultados
 print(f"a) Excentricidade: {e:.4f}")
@@ -36,4 +34,4 @@ print(f"c) Semi-eixo maior: {a:.2f} km")
 print(f"d) Período: {periodo/60:.2f} horas")
 
 # Plotando a órbita
-orbita.plot(plot_velocities=True)
+Plotter(frame="bodycentric", plot3d=True).plot_orbit(orbita)

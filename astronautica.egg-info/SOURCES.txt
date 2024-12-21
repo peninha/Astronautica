@@ -1,0 +1,12 @@
+README.md
+setup.py
+astronautica/__init__.py
+astronautica/body.py
+astronautica/frame.py
+astronautica/maneuver.py
+astronautica/orbit.py
+astronautica.egg-info/PKG-INFO
+astronautica.egg-info/SOURCES.txt
+astronautica.egg-info/dependency_links.txt
+astronautica.egg-info/requires.txt
+astronautica.egg-info/top_level.txt

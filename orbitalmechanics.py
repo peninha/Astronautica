@@ -721,6 +721,7 @@ class OrbitalBase:
         Q_bc_rbc = OrbitalBase.Q_from_Euler_angles(omega_body * delta_t, pattern="z")
         return Q_bc_rbc @ vec_bc
 
+    #####   Topocentric Frame   #####
     @staticmethod
     def JD_from_date_UT(y, m, d, h=0, min=0, s=0):
         """
@@ -763,6 +764,14 @@ class OrbitalBase:
         Calculates the local sideral time from the Greenwich sideral time and the observer's longitude.
         """
         return np.mod(theta_g + longitude, 360)
+
+    @staticmethod
+    def R_from_geocentric_latitude(phi, H, R_body, flatness):
+        """
+        Calculates the topocentric position vector from the geocentric latitude, the body radius and the flattening.
+        """
+        phi = np.radians(phi)
+        return R_body * (1 - flatness * (1 - np.cos(phi)))
 
     #####   Rotation   #####
     @staticmethod
@@ -894,6 +903,7 @@ class OrbitalBase:
         """
         self.omega_body = omega_body
 
+
     #######   Alternative variables   #######
     def M_from_E(self, E):
         """
@@ -973,6 +983,7 @@ class OrbitalBase:
         else:
             raise ValueError("Can't calculate eccentric anomaly from true anomaly for parabolic orbits.")
 
+
     #######   Distance   #######
     def r_avg_by_theta(self):
         """
@@ -999,6 +1010,7 @@ class OrbitalBase:
         theta = np.radians(theta)
         return self.h**2 / (self.mu) * 1/(1 + self.e * np.cos(theta))
 
+
     #######   Rotation   #######
     def Q_bc_peri(self, t_clock):
         """
@@ -1009,6 +1021,7 @@ class OrbitalBase:
                                         self.i, 
                                         self.omega + self.omega_dot * delta_t,
                                         pattern="classical")
+
 
     #######   Velocities   #######
     def v_esc(self, r):
@@ -1154,6 +1167,7 @@ class OrbitalBase:
         t_orbit = self.t_orbit_at_theta(theta)
         return t_orbit + self.time_offset
 
+
     #######   State vectors   #######
     def r_vec_at_theta(self, theta, frame="perifocal"):
         """
@@ -1215,6 +1229,7 @@ class OrbitalBase:
         theta = self.theta_at_t_clock(t_clock)
         return self.state_vectors_at_theta(theta, frame=frame)
     
+
     #######   Adding Points   #######
     def add_orbital_position(self, theta, t_clock=None, name=None):
         """
@@ -1322,6 +1337,7 @@ class OrbitalBase:
             theta = self.theta_at_t_clock(t_clock)
             r = self.r_at_theta(theta)
             self.add_trajectory_points(r, theta, t_clock)
+
 
     #######   Plotting   #######
     def plot(self, orbit=True, points=True, positions=True, velocities=True, trajectory=True, frame="perifocal", plot3d=True, groundtrack=False):
@@ -1752,6 +1768,7 @@ class OrbitalBase:
         plt.tight_layout()
         plt.get_current_fig_manager().window.showMaximized()
         plt.show()
+
 
     ####### String representation #######
     def __str__(self):

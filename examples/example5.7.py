@@ -14,3 +14,10 @@ theta_g = 126.7
 phi = 20
 longitude = 60
 
+theta = theta_g + longitude
+
+R = Orbit.topo_origin_in_bc(r, theta, phi)
+
+R_from_geocentric_latitude = Orbit.topo_origin_in_bc(r, theta_g, phi)
+
+print(R)
