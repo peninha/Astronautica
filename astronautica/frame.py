@@ -1,3 +1,4 @@
+from .body import Body
 import numpy as np
 
 class Frame:
@@ -44,10 +45,7 @@ class Frame:
     @classmethod
     def bodycentric(cls):
         """
-        Creates a bodycentric frame with default values.
-        
-        Returns:
-            Frame: A bodycentric frame initialized with zeros.
+        Creates a bodycentric frame with zeros, because the bodycentric frame is the reference frame.
         """
         return cls(
             name="bodycentric",
@@ -63,24 +61,25 @@ class Frame:
         )
 
     @classmethod
-    def perifocal(cls):
+    def rotating_bodycentric(cls, main_body: Body):
         """
-        Creates a perifocal frame with default values.
+        Creates a rotating bodycentric frame, from a Body object.
+        """
+        if not isinstance(main_body, Body):
+            raise ValueError("main_body must be an instance of Body")
         
-        Returns:
-            Frame: A perifocal frame initialized with Nones.
-        """
-        return cls(name="perifocal")
-
-    @classmethod
-    def perifocal_t0(cls):
-        """
-        Creates a perifocal frame at the initial time with default values.
-        
-        Returns:
-            Frame: A perifocal frame initialized with Nones.
-        """
-        return cls(name="perifocal_t0")
+        return cls(
+            name="rotating_bodycentric",
+            r0_vec_bc_frame=np.zeros(3),
+            v_vec_bc_frame=np.zeros(3),
+            Omega0_bc_frame=0,
+            Omega_dot_bc_frame=main_body.rotation_speed,
+            omega0_bc_frame=0,
+            omega_dot_bc_frame=0,
+            i0_bc_frame=0,
+            i_dot_bc_frame=0,
+            t_clock_bc_frame=0
+        )
 
     ########### FRAMES TRANSFORMATION ###########
     @staticmethod
@@ -147,3 +146,14 @@ class Frame:
         r_vec_frame = np.einsum('ij,j...->i...', Q, r_vec_frame_prime)
         
         return r_vec_frame
+    
+    ########### CONVERSION ###########
+    @staticmethod
+    def convert_cartesian_to_ra_dec(r_vec_xyz):
+        """
+        Calculates the right ascension and declination from the Cartesian position vector.
+        """
+        r = np.linalg.norm(r_vec_xyz)
+        ra = np.degrees(np.arctan2(r_vec_xyz[1], r_vec_xyz[0]))
+        dec = np.degrees(np.arcsin(r_vec_xyz[2]/r))
+        return ra, dec

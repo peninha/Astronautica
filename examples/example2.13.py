@@ -1,4 +1,4 @@
-from orbitalmechanics import Orbit
+from astronautica import Orbit, Body, Plotter
 import numpy as np
 
 """
@@ -9,24 +9,27 @@ v0 = 0.47572i + 8.8116j km/s
 Use Lagrange coefficients to compute the position and velocity vectors after the satellite has traveled through a true anomaly
 of 120°
 """
-M_earth = 5.9722e24 # [kg]
-R_terra = 6378.137 # [km]
+earth = Body(name="earth")
 
-# Vetores de posição e velocidade no sistema perifocal
-r0_vec = np.array([8182.4, -6865.9, 0])  # km
-v0_vec = np.array([0.47572, 8.8116, 0])  # km/s
+# Vetores de posição e velocidade no sistema bodycentric
+r0_vec_bc = np.array([8182.4, -6865.9, 0])  # km
+v0_vec_bc = np.array([0.47572, 8.8116, 0])  # km/s
 delta_theta = 120 # [°]
-r0 = np.linalg.norm(r0_vec)
+r0 = np.linalg.norm(r0_vec_bc)
 
-orbita = Orbit.init_from_state_vectors(m1=M_earth, r_vec=r0_vec, v_vec=v0_vec, body1radius=R_terra)
-theta0 = orbita.theta_at_state_vectors(r0_vec, v0_vec)
-r_vec, v_vec = orbita.state_after_delta_theta(r0_vec, v0_vec, delta_theta)
-theta1 = orbita.theta_at_state_vectors(r_vec, v_vec)
-orbita.add_orbital_position(theta1, name="theta = 120°")
-orbita.plot()
+orbita = Orbit.from_state_vectors(earth, r_vec_bc=r0_vec_bc, v_vec_bc=v0_vec_bc)
 
-print(f"Posição: {r_vec}")
-print(f"Velocidade: {v_vec}")
+theta0 = orbita.orbital_positions[0]['theta']
+orbita.add_orbital_position(theta=theta0+delta_theta, name="Position 1")
+r1_vec_bc, v1_vec_bc = orbita.state_vectors_at_theta(theta0+delta_theta, "bodycentric")
+
+plot = Plotter(frame="bodycentric", plot3d=False)
+plot.plot_orbit(orbit=orbita)
+
+print(f"Posição0: {r0_vec_bc}")
+print(f"Velocidade0: {v0_vec_bc}")
+print(f"Posição1: {r1_vec_bc}")
+print(f"Velocidade1: {v1_vec_bc}")
 
 """
 Find the eccentricity of the orbit in Example 2.13 as well as the true anomaly at the initial time t0 and, hence, the location of

@@ -1,4 +1,4 @@
-from orbitalmechanics import Orbit
+from astronautica import Orbit, Body, Plotter
 import numpy as np
 
 """
@@ -13,18 +13,17 @@ angle is 50°. Show that the path is a hyperbola and calculate the following:
 (g) turn angle
 (h) aiming radius
 """
-M_earth = 5.9722e24 # [kg]
-# Raio da Terra em km
-R_terra = 6378.137
-# Dados do problema
+
+earth = Body(name="earth")
+
 r = 14600  # km
 v = 8.6    # km/s
 gamma = 50 # graus
 
-orbita = Orbit.init_from_r_v_gamma(m1=M_earth, r=r, v=v, gamma=gamma, body1radius=R_terra)
+orbita = Orbit.from_r_v_gamma(earth, r=r, v=v, gamma=gamma)
 
 # Calcular velocidade de escape na posição r
-v_esc = orbita.v_esc(r)
+v_esc = orbita.v_escape(r)
 
 # Verificar se é hiperbólica
 print(orbita.type())
@@ -41,13 +40,13 @@ print(f"c) Anomalia verdadeira: {theta[0]:.2f}°")
 
 # d) Raio do perigeu
 print(f"d) Raio do perigeu: {orbita.rp:.2f} km")
-print(f"   Altitude do perigeu: {orbita.rp - R_terra:.2f} km")
+print(f"   Altitude do perigeu: {earth.altitude(orbita.rp):.2f} km")
 
 # e) Semi-eixo maior
 print(f"e) Semi-eixo maior: {orbita.a:.2f} km")
 
 # f) Energia característica (C3)
-C3 = orbita.C3()
+C3 = orbita.get_C3()
 print(f"f) C3: {C3:.2f} km²/s²")
 
 # g) Ângulo de virada
@@ -59,4 +58,4 @@ b = orbita.aiming_radius()
 print(f"h) Raio de mira: {b:.2f} km")
 
 # Plotar a órbita
-orbita.plot(plot_velocities=True)
+Plotter(frame="bodycentric", plot3d=True).plot_orbit(orbit=orbita)

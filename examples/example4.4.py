@@ -1,4 +1,3 @@
-from orbitalmechanics import Orbit
 import numpy as np
 
 """

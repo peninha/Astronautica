@@ -1,4 +1,4 @@
-from orbitalmechanics import Orbit
+from astronautica import Orbit, Body, Plotter
 
 """
 A geocentric trajectory has a perigee velocity of 15 km/s and a perigee altitude of 300 km. Find
@@ -6,29 +6,28 @@ A geocentric trajectory has a perigee velocity of 15 km/s and a perigee altitude
 (b) the position and speed 3 h later
 """
 
-M_earth = 5.974e24 # [kg]
-Earth_radius = 6378 # [km]
+earth = Body(name="earth")
 v = 15 # [km/s]
-rp = 300 + Earth_radius # [km]
+rp = 300 + earth.radius # [km]
 h = v * rp # [km^2/s]
 
-orbita = Orbit(m1=M_earth, rp=rp, h=h, body1radius=Earth_radius)
-orbita.add_position(0, "perigeu")
+orbita = Orbit.from_elements(earth, rp=rp, h=h, theta0=0)
 
 # (a)
 theta0_a = 100
-t1_a = orbita.t_from_theta(theta0_a)
+t1_a = orbita.t_clock_at_theta(theta0_a)
 r1_a = orbita.r_at_theta(theta0_a)
-orbita.add_position(theta0_a, "100° após perigeu")
+orbita.add_orbital_position(theta=theta0_a, name="100° após perigeu")
 
 # (b)
 t0_b = 3*60*60 + t1_a # [s]
-theta1_b = orbita.theta_from_t(t0_b)
+theta1_b = orbita.theta_at_t_clock(t0_b)
 r1_b = orbita.r_at_theta(theta1_b)
 v1_b = orbita.v_at_r(r1_b)
-orbita.add_position(theta1_b, "3 horas após perigeu")
-
-orbita.plot(plot_positions=True)
+orbita.add_orbital_position(t_clock=t0_b, name="3 horas após perigeu")
+    
+plot = Plotter(frame="bodycentric", plot3d=True)
+plot.plot_orbit(orbit=orbita)
 
 print(f"Tempo 100° após perigeu: {t1_a/(60*60):.4f} h")
 print(f"Posição 100° após perigeu: {r1_a:.4f} km")

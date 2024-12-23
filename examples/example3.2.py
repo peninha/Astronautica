@@ -1,4 +1,4 @@
-from orbitalmechanics import Orbit
+from astronautica import Orbit, Body, Plotter
 import numpy as np
 
 """
@@ -6,16 +6,16 @@ A geocentric elliptical orbit has a perigee radius of 9600 km and an apogee radi
 Find the true anomaly at 3 hours after perigee passage.
 """
 
-M_earth = 5.974e24 # [kg]
-Earth_radius = 6378 # [km]
+earth = Body(name="earth")
 rp = 9600 # [km]
 ra = 21000 # [km]
 theta0 = 0 # [°]
 t = 3*3600 # [s]
 
-orbita = Orbit(m1=M_earth, rp=rp, ra=ra, body1radius=Earth_radius)
-orbita.add_orbital_position(name="sonda0", theta=theta0)
-theta1 = orbita.theta_at_t(t)
-orbita.add_orbital_position(name="sonda1", theta=theta1)
+orbita = Orbit.from_elements(earth, rp=rp, ra=ra, theta0=theta0)
+orbita.add_orbital_position(name="Position 1", t_clock=t)
+theta1 = orbita.orbital_positions[1]['theta']
 print(f"True anomaly at {t/3600:.2f} hours after perigee passage: {theta1:.2f}°")
-orbita.plot(plot_positions=True)
+
+plot = Plotter(frame="bodycentric", plot3d=True)
+plot.plot_orbit(orbit=orbita)

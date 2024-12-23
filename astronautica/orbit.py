@@ -1,6 +1,6 @@
-# astronautica/orbit.py
+from .frame import Frame
+from .body import Body
 import numpy as np
-from astronautica.body import Body
 from scipy.optimize import root_scalar
 
 class Orbit:
@@ -12,9 +12,6 @@ class Orbit:
     - From state vectors (position and velocity)
     ...
     """
-    ########### CONSTANTS ###########
-    G = 6.67430e-20  # Gravitational constant in km^3/kg/s^2
-
     ########### STRING REPRESENTATION ###########
     def __str__(self):
         """
@@ -49,7 +46,7 @@ class Orbit:
         self.orbital_positions = []
         
         self.main_body = main_body
-        self.mu = main_body.mass * self.G
+        self.mu = main_body.mu()
         self.h = 0
         self.e = 0
         self.a = 0
@@ -74,7 +71,7 @@ class Orbit:
         self.n_vec_bc = np.zeros(3)
 
     @classmethod
-    def from_elements(cls, main_body, h=None, e=None, a=None, rp=None, ra=None, i=0, Omega0=0, omega0=0, theta0=0, t0_clock=0):
+    def from_elements(cls, main_body, h=None, e=None, a=None, rp=None, ra=None, i=0.0, Omega0=0.0, omega0=0.0, theta0=0.0, t0_clock=0.0):
         """
         Initialize an orbit from Keplerian elements.
 
@@ -110,6 +107,10 @@ class Orbit:
             e = orbit.e_from_rp_ra(rp, ra)
             h = orbit.h_from_rp_e(rp, e)
             a = orbit.a_from_h_e(h, e)
+        elif h is not None and rp is not None:
+            e = orbit.e_from_h_rp(h, rp)
+            a = orbit.a_from_h_e(h, e)
+            ra = orbit.ra_from_h_e(h, e)
         else:
             raise ValueError("Invalid combination of parameters. Please provide at least two of h, e, a, rp, ra.")
 
@@ -168,6 +169,8 @@ class Orbit:
         :param v_vec_bc: Velocity vector in the bodycentric reference frame (km/s)
         :param t0_clock: Time at t0 (s)
         """
+        r_vec_bc = np.array(r_vec_bc)
+        v_vec_bc = np.array(v_vec_bc)
         orbit = cls(main_body, _from_classmethod=True)
         h_vec_bc = cls.h_vec_from_state_vectors(r_vec_bc, v_vec_bc)
         h = np.linalg.norm(h_vec_bc)
@@ -179,7 +182,10 @@ class Orbit:
 
         i = orbit.i_from_h_vec(h_vec_bc)
         n_vec_bc = cls.n_vec_from_h_vec(h_vec_bc)
-        Omega0 = cls.Omega_from_n_vec(n_vec_bc)
+        if np.linalg.norm(n_vec_bc) == 0:
+            Omega0 = np.degrees(np.arctan2(e_vec_bc[1], e_vec_bc[0]))
+        else:
+            Omega0 = cls.Omega_from_n_vec(n_vec_bc)
         omega0 = cls.omega_from_e_vec_n_vec(e_vec_bc, n_vec_bc)
         theta0 = cls.theta_from_h_vec_e_vec_r_vec(h_vec_bc, e_vec_bc, r_vec_bc)
 
@@ -335,6 +341,27 @@ class Orbit:
         return orbit
 
     def finish_init(self):
+        self.Omega_dot, self.omega_dot = self.oblateness_correction()
+
+        self.frames = {
+            "bodycentric": Frame.bodycentric(),
+            "perifocal": Frame(name="perifocal",
+                               Omega0_bc_frame=self.Omega0,
+                               Omega_dot_bc_frame=self.Omega_dot,
+                               omega0_bc_frame=self.omega0,
+                               omega_dot_bc_frame=self.omega_dot,
+                               i0_bc_frame=self.i,
+                               t_clock_bc_frame=self.t0_clock),
+            "perifocal_t0": Frame(name="perifocal_t0",
+                                  Omega0_bc_frame=self.Omega0,
+                                  Omega_dot_bc_frame=0,
+                                  omega0_bc_frame=self.omega0,
+                                  omega_dot_bc_frame=0,
+                                  i0_bc_frame=self.i,
+                                  t_clock_bc_frame=self.t0_clock),
+            "rotating_bodycentric": Frame.rotating_bodycentric(self.main_body)
+        }
+
         self.T = self.get_T()
         self.t0_orbit = self.t_orbit_at_theta(self.theta0)
         self.time_offset = self.t0_clock - self.t0_orbit
@@ -373,6 +400,12 @@ class Orbit:
         theta1_rad = np.radians(theta1)
         theta2_rad = np.radians(theta2)
         return (r2/r1 - 1) / (np.cos(theta1_rad) - (r2/r1)*np.cos(theta2_rad))
+
+    def e_from_h_rp(self, h, rp):
+        """
+        Calculates the eccentricity using specific angular momentum and periapsis distance.
+        """
+        return h**2 / (self.mu * rp) - 1
 
     @staticmethod
     def e_from_rp_ra(rp, ra):
@@ -536,7 +569,7 @@ class Orbit:
         elif self.e == 1:
             return None
         else: # e > 1
-            return self.a * np.sqrt(self.e**2 - 1)
+            return - self.a * np.sqrt(self.e**2 - 1)
     
     def get_p(self):
         """
@@ -645,6 +678,18 @@ class Orbit:
         # Convert to degrees and subtract from 90° to obtain the flight path angle
         return 90 - np.degrees(gamma)
 
+    def oblateness_correction(self):
+        """
+        Calculates the oblateness correction factor for node regression and perigee advance.
+        """
+        if self.e >= 1:
+            raise ValueError("Can't calculate oblateness correction for parabolic or hyperbolic orbits.")
+        i = np.radians(self.i)
+        coeficient = - 3/2 * np.sqrt(self.mu) * self.main_body.J2 * self.main_body.radius**2 / (self.a**(7/2) * (1 - self.e**2)**2)
+        Omega_dot = np.degrees(coeficient * np.cos(i))
+        omega_dot = np.degrees(coeficient * (5/2 * np.sin(i)**2 - 2)) 
+        return Omega_dot, omega_dot
+
     def r_at_theta(self, theta):
         """
         Calculates the distance from the primary body center to a point on the orbit at a given true anomaly.
@@ -657,34 +702,30 @@ class Orbit:
         Calculates the state vectors at a given true anomaly, in a given frame of reference, at time t0.
 
         :param theta: True anomaly (degrees)
-        :param frame: Frame of reference to calculate the position vector
+        :param frame: a Frame object or a string to create a Frame object
         """
-        if frame == "perifocal":
+        if isinstance(frame, str):
+            frame = self.frames[frame]
+        
+        if frame.name == "bodycentric":
             theta_rad = np.radians(theta)
-            r_vec = self.h**2 / (self.mu * (1 + self.e*np.cos(theta_rad))) * np.array([np.cos(theta_rad), np.sin(theta_rad), 0])
-            v_vec = self.mu / self.h * np.array([-np.sin(theta_rad), self.e + np.cos(theta_rad), 0])
-        elif frame == "perifocal_t0":
-            if not self.omega_dot and not self.Omega_dot:
-                return self.state_vectors_at_theta(theta, frame="perifocal")
-            else:
-                r_vec_bc, v_vec_bc = self.state_vectors_at_theta(theta, frame="bodycentric")
-                r_vec = self.Q_bc_perit0 @ r_vec_bc
-                v_vec = self.Q_bc_perit0 @ v_vec_bc
-        elif frame == "bodycentric":
+            r_vec_peri = self.h**2 / (self.mu * (1 + self.e*np.cos(theta_rad))) * np.array([np.cos(theta_rad), np.sin(theta_rad), 0])
+            v_vec_peri = self.mu / self.h * np.array([-np.sin(theta_rad), self.e + np.cos(theta_rad), 0])
             if not self.omega_dot and not self.Omega_dot:
                 Q_bc_peri = self.Q_bc_perit0
             else:
-                t_orbit = self.t_orbit_at_theta(theta)
-                t_clock = t_orbit + self.time_offset
+                t_clock = self.t_orbit_at_theta(theta) + self.time_offset
                 Q_bc_peri = self.Q_bc_peri_from_t_clock(t_clock)
-            r_vec_peri, v_vec_peri = self.state_vectors_at_theta(theta, frame="perifocal")
             r_vec = Q_bc_peri.T @ r_vec_peri
             v_vec = Q_bc_peri.T @ v_vec_peri
+            return r_vec, v_vec
         else:
-            raise ValueError("Invalid frame of reference.")
-        return r_vec, v_vec
+            t_clock = self.t_orbit_at_theta(theta) + self.time_offset
+            r_vec_bc, v_vec_bc = self.state_vectors_at_theta(theta, frame="bodycentric")
+            r_vec_frame, v_vec_frame = frame.transform_bc_to_frame(np.column_stack((r_vec_bc, v_vec_bc)), t_clock).T
+            return r_vec_frame, v_vec_frame
 
-    def state_vectors_at_t_clock(self, t_clock, frame="perifocal"):
+    def state_vectors_at_t_clock(self, t_clock, frame="bodycentric"):
         """
         Finds the position and velocity vectors at a given time.
         """
@@ -955,7 +996,7 @@ class Orbit:
         if self.e < 1:
             return np.degrees(2 * np.arctan(np.sqrt((1 - self.e) / (1 + self.e)) * np.tan(theta/2)))
         elif self.e > 1:
-            return np.degrees(2 * np.arctanh(np.sqrt((self.e - 1) / (self.e + 1)) * np.tan(theta/2)))
+            return np.degrees(2 * np.arctan(np.sqrt((self.e - 1) / (self.e + 1)) * np.tan(theta/2)))
         else:
             raise ValueError("Can't calculate eccentric anomaly from true anomaly for parabolic orbits.")
 

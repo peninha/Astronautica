@@ -1,4 +1,4 @@
-from orbitalmechanics import Orbit
+from astronautica import Orbit, Body, Plotter
 import numpy as np
 
 """
@@ -11,8 +11,8 @@ i = 30°
 θ = 30°
 Using Algorithm 4.5, find the state vectors r and v in the geocentric equatorial frame.
 """
-M_earth = 5.9722e24 # [kg]
-R_terra = 6378.137
+
+earth = Body("earth")
 
 h = 80000
 e = 1.4
@@ -21,9 +21,9 @@ Omega = 40
 omega = 60
 theta0 = 30
 
-orbita = Orbit(m1=M_earth, m2=0, h=h, e=e, i=i, Omega=Omega, omega=omega, theta0=theta0, body1radius=R_terra)
+orbita = Orbit.from_elements(earth, h=h, e=e, i=i, Omega0=Omega, omega0=omega, theta0=theta0)
 r_vec, v_vec = orbita.state_vectors_at_theta(theta0, frame="bodycentric")
 print(r_vec, v_vec)
 
-orbita.plot(frame="bodycentric", points=True, velocities=True, positions=True, trajectory=False, plot3d=True)
-
+plotter = Plotter(frame="bodycentric", plot3d=True)
+plotter.plot_orbit(orbita)
