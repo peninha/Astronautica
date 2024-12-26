@@ -104,7 +104,7 @@ class Plotter:
                 r_vec_bc, v_vec_bc = orbit.state_vectors_at_theta(position['theta'], "bodycentric")
                 r_vec = self.frame.transform_bc_to_frame(r_vec_bc, position['t_clock'])
                 v_vec = self.frame.transform_bc_to_frame(v_vec_bc, position['t_clock'])
-                label += f' (t={position['t_clock']:.2f}s)'
+                label += f'(t={position["t_clock"]:.2f}s)'
                 if position['t_clock'] < orbit.t0_clock:
                     t_min = min(position['t_clock'] for position in orbit.orbital_positions if position['t_clock'] is not None)
                     t_norm = (position['t_clock'] - t_min) / (orbit.t0_clock - t_min)
@@ -235,7 +235,7 @@ class Plotter:
                 point_plot = self.ax.plot(r_vec[0], r_vec[1], 'o', color=color,
                                     picker=True, pickradius=5, zorder=4)[0]
                 # Create annotation
-                annotation = self.ax.annotate(f't = {position['t_clock']:.2f}s',
+                annotation = self.ax.annotate(f't = {position["t_clock"]:.2f}s',
                     xy=(r_vec[0], r_vec[1]), xytext=(10, 10),
                     textcoords='offset points',
                     bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5),
@@ -255,7 +255,7 @@ class Plotter:
         plt.gcf().canvas.mpl_connect('motion_notify_event', hover)
         
         # Generate high resolution points for the continuous line
-        times = np.linspace(t0_clock, t1_clock, int((t1_clock - t0_clock)/60))
+        times = np.linspace(t0_clock, t1_clock, int((t1_clock - t0_clock)/1000))
         r_vecs = []
         colors = []
 
