@@ -1,4 +1,4 @@
-from orbitalmechanics import Orbit
+from astronautica import Orbit, Body, Frame, Plotter, Trajectory
 import numpy as np
 
 """
@@ -12,8 +12,8 @@ i0 = 60° Inclination
 Calculate the right ascension (longitude east of x') and declination (latitude)
 relative to the rotating earth 45 min later.
 """
-M_earth = 5.9722e24 # [kg]
-R_terra = 6378.137
+
+earth = Body("earth")
 
 rp = 6700 # [km]
 ra = 10000 # [km]
@@ -26,12 +26,9 @@ theta0 = 230 # [°]
 t0_clock = 0 # [s]
 t1_clock = 45*60 # [s]
 
-orbita = Orbit(m1=M_earth, m2=0, rp=rp, ra=ra, theta0=theta0, Omega=Omega0, i=i0, omega=omega0, body1radius=R_terra)
-orbita.omega_body = omega_earth
+orbita = Orbit.from_elements(main_body=earth, rp=rp, ra=ra, theta0=theta0, Omega0=Omega0, i=i0, omega0=omega0)
+print(orbita)
 
-delta_t = t1_clock - t0_clock
-t0_orbit = orbita.t_orbit_at_theta(theta0)
-t1_orbit = t0_orbit + delta_t
 theta1 = orbita.theta_at_t_clock(t1_clock)
 print("theta0: ", theta0)
 print("theta1: ", theta1)
@@ -39,22 +36,22 @@ print("theta1: ", theta1)
 r_vec_bc_1, v_vec_bc_1 = orbita.state_vectors_at_t_clock(t1_clock, frame="bodycentric")
 print("r_vec_bc_1: ", r_vec_bc_1)
 
-r_vec_rbc_1, v_vec_rbc_1 = orbita.state_vectors_at_t_clock(t1_clock, frame="rotatingBodycentric")
+r_vec_rbc_1, v_vec_rbc_1 = orbita.state_vectors_at_t_clock(t1_clock, frame="rotating_bodycentric")
 print("r_vec_rbc_1: ", r_vec_rbc_1)
 
-ra_1, dec_1 = orbita.convert_cartesian_to_ra_dec(r_vec_rbc_1)
+ra_1, dec_1 = Frame.convert_cartesian_to_ra_dec(r_vec_rbc_1)
 print("ra_1: ", ra_1)
 print("dec_1: ", dec_1)
 
-orbita.trajectory(theta1=theta1, n_points=2)
-orbita.plot(frame="rotatingBodycentric",
-            orbit=False,
-            points=True,
-            velocities=True,
-            positions=True,
-            trajectory=True,
-            plot3d=True,
-            groundtrack=True)
+trajetoria = Trajectory(orbita, t0_clock=t0_clock)
+trajetoria.add_trajectory_position(0, t1_clock, theta1, name="Position 1")
 
-orbita.plot_groundtrack()
-
+plotter = Plotter(plot3d=True)
+plotter.plot_trajectory(trajetoria,
+                        samples=50,
+                        frame="rotating_bodycentric",
+                        orbits=False,
+                        points=True,
+                        velocities=True,    
+                        positions=True,
+                        groundtrack=False)

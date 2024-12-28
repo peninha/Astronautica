@@ -44,7 +44,7 @@ class Trajectory:
             "trajectory_positions": []  # List to store trajectory positions
         }
 
-    def add_trajectory_position(self, orbit_number, t_clock=None, theta=None, name=None):
+    def add_trajectory_position(self, orbit_number=0, t_clock=None, theta=None, name=None):
         """
         Adds a trajectory position to a specific orbit in the trajectory.
         """

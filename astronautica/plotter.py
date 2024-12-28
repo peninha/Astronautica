@@ -210,7 +210,7 @@ class Plotter:
             self.ax.quiver(center_vec[0], center_vec[1], e_vec[0], e_vec[1], color='r', label='e', scale_units='xy', scale=1, width=0.003)
             self.ax.quiver(center_vec[0], center_vec[1], n_vec[0], n_vec[1], color='y', label='n', scale_units='xy', scale=1, width=0.003)
 
-    def draw_trajectory(self, orbit_number, groundtrack=False):
+    def draw_trajectory(self, orbit_number, samples=1000, velocities=True, groundtrack=False):
         """
         Draws the trajectory
 
@@ -230,10 +230,10 @@ class Plotter:
                 r_vec = r_vec / np.linalg.norm(r_vec) * orbit.main_body.radius
             if self.plot3d:
                 point_plot = self.ax.plot(r_vec[0], r_vec[1], r_vec[2], 'o', color=color,
-                                    picker=True, pickradius=5)[0]
+                                    picker=True, pickradius=5, label=position['name']+f' (t={position["t_clock"]:.2f}s)')[0]
             else:
                 point_plot = self.ax.plot(r_vec[0], r_vec[1], 'o', color=color,
-                                    picker=True, pickradius=5, zorder=4)[0]
+                                    picker=True, pickradius=5, label=position['name']+f' (t={position["t_clock"]:.2f}s)', zorder=4)[0]
                 # Create annotation
                 annotation = self.ax.annotate(f't = {position["t_clock"]:.2f}s',
                     xy=(r_vec[0], r_vec[1]), xytext=(10, 10),
@@ -243,6 +243,17 @@ class Plotter:
                     visible=False,
                     zorder=10)
                 annotations.append((point_plot, annotation))
+            # Plot velocity vector
+            if velocities:
+                v_vec = v_vec * self.trajectory.orbits[orbit_number]['orbit'].get_p()/20  # Velocity vector scale
+                if groundtrack:
+                    v_r = np.dot(v_vec, r_vec/np.linalg.norm(r_vec))
+                    v_vec = v_vec - v_r * r_vec/np.linalg.norm(r_vec)
+                if self.plot3d:
+                    self.ax.quiver(r_vec[0], r_vec[1], r_vec[2], v_vec[0], v_vec[1], v_vec[2], color=color)
+                else:
+                    self.ax.quiver(r_vec[0], r_vec[1], v_vec[0], v_vec[1], color=color, scale_units='xy', scale=1, width=0.003, zorder=5)
+
     
         # Hover function that manages all annotations
         def hover(event):
@@ -255,7 +266,7 @@ class Plotter:
         plt.gcf().canvas.mpl_connect('motion_notify_event', hover)
         
         # Generate high resolution points for the continuous line
-        times = np.linspace(t0_clock, t1_clock, int((t1_clock - t0_clock)/1000))
+        times = np.linspace(t0_clock, t1_clock, samples)
         r_vecs = []
         colors = []
 
@@ -330,7 +341,7 @@ class Plotter:
         plt.get_current_fig_manager().window.showMaximized() # type: ignore
         plt.show()
 
-    def plot_trajectory(self, trajectory, frame="bodycentric", orbits=True, points=True, positions=True, velocities=True, groundtrack=False):
+    def plot_trajectory(self, trajectory, samples=1000, frame="bodycentric", orbits=True, points=True, positions=True, velocities=True, groundtrack=False):
         """
         Plots the trajectory
         """
@@ -374,9 +385,7 @@ class Plotter:
                 self.draw_orbit(orbit, t_clock_bc=orbit.t0_clock, groundtrack=groundtrack)
             if points:
                 self.draw_points(orbit)
-            if positions:
-                self.draw_positions(orbit, velocities=velocities, groundtrack=groundtrack)
-            self.draw_trajectory(orbit_number, groundtrack=groundtrack)
+            self.draw_trajectory(orbit_number, samples=samples, velocities=velocities, groundtrack=groundtrack)
         
         self.ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left')
         self.ax.set_xlabel('X (km)')
