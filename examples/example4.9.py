@@ -28,5 +28,5 @@ plotter = Plotter(plot3d=True)
 plotter.plot_orbit(orbita)
 
 
-
+#print(orbita)
 

@@ -50,8 +50,10 @@ plotter = Plotter(plot3d=True)
 plotter.plot_trajectory(trajetoria,
                         samples=50,
                         frame="rotating_bodycentric",
-                        orbits=False,
+                        orbits=True,
                         points=True,
                         velocities=True,    
                         positions=True,
                         groundtrack=False)
+
+plotter.plot_groundtrack(trajetoria, samples=200)

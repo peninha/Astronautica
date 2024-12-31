@@ -23,10 +23,10 @@ e4 = - np.sqrt(1 - np.sqrt(-3/2 * np.sqrt(mu) * earth.J2 * earth.radius**2 * np.
 print(Omega_dot)
 print(a)
 print(i)
-print(f"e1: {e1:.2f}")
-print(f"e2: {e2:.2f}")
-print(f"e3: {e3:.2f}") #e3 é a solução correta
-print(f"e4: {e4:.2f}")
+print(f"e1: {e1:.4f}")
+print(f"e2: {e2:.4f}")
+print(f"e3: {e3:.4f}") #e3 é a solução correta
+print(f"e4: {e4:.4f}")
 
 e = e3
 
@@ -42,3 +42,5 @@ print(f"Altitude apogee: {earth.altitude(ra):.2f} km")
 
 plotter = Plotter(plot3d=True)
 plotter.plot_orbit(orbita, frame="bodycentric")
+
+#print(orbita)

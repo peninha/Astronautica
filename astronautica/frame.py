@@ -6,10 +6,10 @@ class Frame:
     Class representing a reference frame relative to the bodycentric frame.
     """
     def __init__(self, name, r0_vec_bc_frame=np.zeros(3), v_vec_bc_frame=np.zeros(3),
-                 Omega0_bc_frame=0, Omega_dot_bc_frame=0,
-                 omega0_bc_frame=0, omega_dot_bc_frame=0,
-                 i0_bc_frame=0, i_dot_bc_frame=0,
-                 t_clock_bc_frame=0):
+                 Omega0_bc_frame=0.0, Omega_dot_bc_frame=0.0,
+                 omega0_bc_frame=0.0, omega_dot_bc_frame=0.0,
+                 i0_bc_frame=0.0, i_dot_bc_frame=0.0,
+                 t_clock_bc_frame=0.0):
         """
         Initializes a custom reference frame.
         

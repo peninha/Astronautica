@@ -77,7 +77,7 @@ class Plotter:
         
         #plot body surface
         if self.plot3d:
-            self.ax.plot_surface(sphere_vec[0], sphere_vec[1], sphere_vec[2], color=color, alpha=0.4, label=label)   # type: ignore
+            self.ax.plot_surface(sphere_vec[0], sphere_vec[1], sphere_vec[2], color=color, alpha=0.4, label=label, zorder=2)   # type: ignore
         else:
             center_vec = self.frame.transform_bc_to_frame(np.array([0, 0, 0]), t_clock_bc)
             circle = plt.Circle((center_vec[0], center_vec[1]), body.radius, color=color, alpha=0.4, label=label, zorder=2) # type: ignore
@@ -93,11 +93,11 @@ class Plotter:
                 r_vec_bc = orbit.state_vectors_at_theta(point['theta'], "bodycentric")[0]
                 r_vec = self.frame.transform_bc_to_frame(r_vec_bc, point['t_clock'])
                 if self.plot3d:
-                    self.ax.plot(r_vec[0], r_vec[1], r_vec[2], 'o', color=color, label=label)
+                    self.ax.plot(r_vec[0], r_vec[1], r_vec[2], 'o', color=color, label=label, zorder=2)
                 else:
                     self.ax.plot(r_vec[0], r_vec[1], 'o', color=color, label=label, zorder=2)
     
-    def draw_positions(self, orbit, velocities=True, groundtrack=False):
+    def draw_positions(self, orbit, velocities=True, groundtrack=False, v_scale=1):
         if orbit.orbital_positions:
             for i, position in enumerate(orbit.orbital_positions):
                 label = position.get('name', f'Position {i+1}')
@@ -124,16 +124,16 @@ class Plotter:
                 
                 # Plot velocity vector
                 if velocities:
-                    v_vec = v_vec * orbit.get_p()/20  # Velocity vector scale
+                    v_vec = v_vec * orbit.main_body.radius / 20 * v_scale  # Velocity vector scale
                     if groundtrack:
                         v_r = np.dot(v_vec, r_vec/np.linalg.norm(r_vec))
                         v_vec = v_vec - v_r * r_vec/np.linalg.norm(r_vec)
                     if self.plot3d:
-                        self.ax.quiver(r_vec[0], r_vec[1], r_vec[2], v_vec[0], v_vec[1], v_vec[2], color=color)
+                        self.ax.quiver(r_vec[0], r_vec[1], r_vec[2], v_vec[0], v_vec[1], v_vec[2], color=color, zorder=5)
                     else:
                         self.ax.quiver(r_vec[0], r_vec[1], v_vec[0], v_vec[1], color=color, scale_units='xy', scale=1, width=0.003, zorder=5)
 
-    def draw_orbit(self, orbit, t_clock_bc=0, groundtrack=False):
+    def draw_orbit(self, orbit, t_clock_bc=0, groundtrack=False, h_arrow=True, e_arrow=True, n_arrow=True, style="solid", color=(0,0,1), label="Orbit"):
         """
         Draws the orbit
 
@@ -199,18 +199,28 @@ class Plotter:
         
         # Plot orbit
         center_vec = self.frame.transform_bc_to_frame(np.array([0, 0, 0]), t_clock_bc)
+        if style == "solid":
+            style = '-'
+        elif style == "dashed": 
+            style = '--'
         if self.plot3d:
-            self.ax.plot(r_vecs[0], r_vecs[1], r_vecs[2], 'b-', label='Orbit', linewidth=2)
-            self.ax.quiver(center_vec[0], center_vec[1], center_vec[2], h_vec[0], h_vec[1], h_vec[2], color=(0,0,1), label='h - Angular Momentum')
-            self.ax.quiver(center_vec[0], center_vec[1], center_vec[2], e_vec[0], e_vec[1], e_vec[2], color=(1,0,0), label='e - Eccentricity')
-            self.ax.quiver(center_vec[0], center_vec[1], center_vec[2], n_vec[0], n_vec[1], n_vec[2], color=(0.8,0.8,0), label='n - Ascending Node')
+            self.ax.plot(r_vecs[0], r_vecs[1], r_vecs[2], style, color=color, label=label, linewidth=2, zorder=1)
+            if h_arrow:
+                self.ax.quiver(center_vec[0], center_vec[1], center_vec[2], h_vec[0], h_vec[1], h_vec[2], color=color, label='h - Angular Momentum')
+            if e_arrow:
+                self.ax.quiver(center_vec[0], center_vec[1], center_vec[2], e_vec[0], e_vec[1], e_vec[2], color=color, label='e - Eccentricity')
+            if n_arrow:
+                self.ax.quiver(center_vec[0], center_vec[1], center_vec[2], n_vec[0], n_vec[1], n_vec[2], color=color, label='n - Ascending Node')
         else:
-            self.ax.plot(r_vecs[0], r_vecs[1], 'b-', label='Orbit', linewidth=2, zorder=1)
-            self.ax.quiver(center_vec[0], center_vec[1], h_vec[0], h_vec[1], color='g', label='h', scale_units='xy', scale=1, width=0.003)
-            self.ax.quiver(center_vec[0], center_vec[1], e_vec[0], e_vec[1], color='r', label='e', scale_units='xy', scale=1, width=0.003)
-            self.ax.quiver(center_vec[0], center_vec[1], n_vec[0], n_vec[1], color='y', label='n', scale_units='xy', scale=1, width=0.003)
+            self.ax.plot(r_vecs[0], r_vecs[1], style, color=color, label=label, linewidth=2, zorder=1)
+            if h_arrow:
+                self.ax.quiver(center_vec[0], center_vec[1], h_vec[0], h_vec[1], color=color, label='h', scale_units='xy', scale=1, width=0.003)
+            if e_arrow:
+                self.ax.quiver(center_vec[0], center_vec[1], e_vec[0], e_vec[1], color=color, label='e', scale_units='xy', scale=1, width=0.003)
+            if n_arrow:
+                self.ax.quiver(center_vec[0], center_vec[1], n_vec[0], n_vec[1], color=color, label='n', scale_units='xy', scale=1, width=0.003)
 
-    def draw_trajectory(self, orbit_number, samples=1000, velocities=True, groundtrack=False):
+    def draw_trajectory(self, orbit_number, samples=1000, velocities=True, groundtrack=False, color=(1,0.5,0), v_scale=1):
         """
         Draws the trajectory
 
@@ -224,15 +234,18 @@ class Plotter:
         
         for position in self.trajectory.orbits[orbit_number]['trajectory_positions']:
             r_vec, v_vec = orbit.state_vectors_at_t_clock(position['t_clock'], self.frame)
-            t_norm = (position['t_clock'] - t0_clock) / (t1_clock - t0_clock)
-            color = self.color_gradient(t_norm)
+            if t1_clock == t0_clock:
+                t_norm = 0
+            else:
+                t_norm = (position['t_clock'] - t0_clock) / (t1_clock - t0_clock)
+            point_color = self.color_gradient(t_norm, colors=[color, (0,0,0)])
             if groundtrack:
                 r_vec = r_vec / np.linalg.norm(r_vec) * orbit.main_body.radius
             if self.plot3d:
-                point_plot = self.ax.plot(r_vec[0], r_vec[1], r_vec[2], 'o', color=color,
-                                    picker=True, pickradius=5, label=position['name']+f' (t={position["t_clock"]:.2f}s)')[0]
+                point_plot = self.ax.plot(r_vec[0], r_vec[1], r_vec[2], 'o', color=point_color,
+                                    picker=True, pickradius=5, label=position['name']+f' (t={position["t_clock"]:.2f}s)', zorder=4)[0]
             else:
-                point_plot = self.ax.plot(r_vec[0], r_vec[1], 'o', color=color,
+                point_plot = self.ax.plot(r_vec[0], r_vec[1], 'o', color=point_color,
                                     picker=True, pickradius=5, label=position['name']+f' (t={position["t_clock"]:.2f}s)', zorder=4)[0]
                 # Create annotation
                 annotation = self.ax.annotate(f't = {position["t_clock"]:.2f}s',
@@ -245,14 +258,14 @@ class Plotter:
                 annotations.append((point_plot, annotation))
             # Plot velocity vector
             if velocities:
-                v_vec = v_vec * self.trajectory.orbits[orbit_number]['orbit'].get_p()/20  # Velocity vector scale
+                v_vec = v_vec * orbit.main_body.radius / 20 * v_scale # Velocity vector scale
                 if groundtrack:
                     v_r = np.dot(v_vec, r_vec/np.linalg.norm(r_vec))
                     v_vec = v_vec - v_r * r_vec/np.linalg.norm(r_vec)
                 if self.plot3d:
-                    self.ax.quiver(r_vec[0], r_vec[1], r_vec[2], v_vec[0], v_vec[1], v_vec[2], color=color)
+                    self.ax.quiver(r_vec[0], r_vec[1], r_vec[2], v_vec[0], v_vec[1], v_vec[2], color=point_color, zorder=5)
                 else:
-                    self.ax.quiver(r_vec[0], r_vec[1], v_vec[0], v_vec[1], color=color, scale_units='xy', scale=1, width=0.003, zorder=5)
+                    self.ax.quiver(r_vec[0], r_vec[1], v_vec[0], v_vec[1], color=point_color, scale_units='xy', scale=1, width=0.003, zorder=5)
 
     
         # Hover function that manages all annotations
@@ -266,7 +279,9 @@ class Plotter:
         plt.gcf().canvas.mpl_connect('motion_notify_event', hover)
         
         # Generate high resolution points for the continuous line
+        samples = min(samples, int((t1_clock - t0_clock)/10))
         times = np.linspace(t0_clock, t1_clock, samples)
+
         r_vecs = []
         colors = []
 
@@ -276,19 +291,41 @@ class Plotter:
                 r_vec = r_vec / np.linalg.norm(r_vec) * orbit.main_body.radius
             t_norm = (t - t0_clock) / (t1_clock - t0_clock)
             r_vecs.append(r_vec)
-            colors.append(self.color_gradient(t_norm))
+            colors.append(self.color_gradient(t_norm, colors=[color, (0,0,0)]))
 
         # Convert to numpy array for better performance
         r_vecs = np.array(r_vecs)
         for i in range(len(r_vecs)-1):
             if self.plot3d:
                 self.ax.plot(r_vecs[i:i+2,0], r_vecs[i:i+2,1], r_vecs[i:i+2,2], 
-                        '-', color=colors[i], alpha=0.6, linewidth=2)
+                        '-', color=colors[i], alpha=0.6, linewidth=2, zorder=3)
             else:
                 self.ax.plot(r_vecs[i:i+2,0], r_vecs[i:i+2,1], 
                             '-', color=colors[i], alpha=0.6, linewidth=2, zorder=3)
 
-    def plot_orbit(self, orbit, frame="bodycentric", points=True, positions=True, velocities=True, groundtrack=False):
+    def draw_maneuver(self, orbit, maneuver, color=(0.7,0,0), v_scale=1):
+        """
+        Draws the maneuver
+        """
+        label = maneuver.name
+        r_vec_bc = orbit.state_vectors_at_t_clock(maneuver.t_clock, "bodycentric")[0]
+        r_vec = self.frame.transform_bc_to_frame(r_vec_bc, maneuver.t_clock)
+        label += f'(t={maneuver.t_clock:.2f}s)'
+        
+        if self.plot3d:
+            self.ax.plot(r_vec[0], r_vec[1], r_vec[2], 'H', color=color, label=label, zorder=1, markersize=15)
+        else:
+            self.ax.plot(r_vec[0], r_vec[1], 'H', color=color, label=label, zorder=1, markersize=15)
+        
+        if maneuver.delta_v_vec_bc is not None:
+            delta_v_vec = self.frame.transform_bc_to_frame(maneuver.delta_v_vec_bc, maneuver.t_clock)
+            delta_v_vec = delta_v_vec * orbit.main_body.radius/20 * v_scale  # Velocity vector scale
+            if self.plot3d:
+                self.ax.quiver(r_vec[0], r_vec[1], r_vec[2], delta_v_vec[0], delta_v_vec[1], delta_v_vec[2], color=color, zorder=12)
+            else:
+                self.ax.quiver(r_vec[0], r_vec[1], delta_v_vec[0], delta_v_vec[1], color=color, scale_units='xy', scale=1, width=0.003, zorder=12)
+
+    def plot_orbit(self, orbit, frame="bodycentric", points=True, positions=True, velocities=True, groundtrack=False, v_scale=1):
         """
         Plots the orbit
         """
@@ -327,7 +364,7 @@ class Plotter:
         if points:
             self.draw_points(orbit)
         if positions:
-            self.draw_positions(orbit, velocities=velocities, groundtrack=groundtrack)
+            self.draw_positions(orbit, velocities=velocities, groundtrack=groundtrack, v_scale=v_scale)
 
         self.ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left')
         self.ax.set_xlabel('X (km)')
@@ -341,7 +378,7 @@ class Plotter:
         plt.get_current_fig_manager().window.showMaximized() # type: ignore
         plt.show()
 
-    def plot_trajectory(self, trajectory, samples=1000, frame="bodycentric", orbits=True, points=True, positions=True, velocities=True, groundtrack=False):
+    def plot_trajectory(self, trajectory, samples=1000, frame="bodycentric", orbits=True, points=True, positions=True, velocities=True, groundtrack=False, v_scale=1):
         """
         Plots the trajectory
         """
@@ -377,15 +414,18 @@ class Plotter:
         if not isinstance(frame, Frame):
             raise ValueError("The 'frame' parameter must be an instance of the Frame class")
         self.frame = frame
-
         self.draw_body(orbit0.main_body, r_vec_bc=np.array([0, 0, 0]), t_clock_bc=orbit0.t0_clock, label="Central Body")
+
+        colors = [(1,0.5,0), (0,0,1), (1,0,0), (0,1,1), (1,1,0)]
         for orbit_number in trajectory.orbits:
             orbit = trajectory.orbits[orbit_number]['orbit']
             if orbits:
-                self.draw_orbit(orbit, t_clock_bc=orbit.t0_clock, groundtrack=groundtrack)
+                self.draw_orbit(orbit, t_clock_bc=orbit.t0_clock, groundtrack=groundtrack, h_arrow=False, e_arrow=True, n_arrow=True, style="dashed", color=colors[orbit_number%len(colors)], label=f"Orbit {orbit_number}")
             if points:
                 self.draw_points(orbit)
-            self.draw_trajectory(orbit_number, samples=samples, velocities=velocities, groundtrack=groundtrack)
+            self.draw_trajectory(orbit_number, samples=samples, velocities=velocities, groundtrack=groundtrack, color=colors[orbit_number%len(colors)], v_scale=v_scale)
+            for maneuver in trajectory.orbits[orbit_number]['maneuvers']:
+                self.draw_maneuver(orbit, maneuver, v_scale=v_scale)
         
         self.ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left')
         self.ax.set_xlabel('X (km)')
@@ -399,3 +439,116 @@ class Plotter:
         plt.get_current_fig_manager().window.showMaximized() # type: ignore
         plt.show()
 
+    def plot_groundtrack(self, trajectory, samples=1000, frame="rotating_bodycentric"):
+        """
+        Plots the groundtrack
+        """
+        if not isinstance(trajectory, Trajectory):
+            raise ValueError("The 'trajectory' parameter must be an instance of the Trajectory class")
+
+        # Use first orbit to define frame
+        orbit0 = trajectory.orbits[0]['orbit']
+        if isinstance(frame, str):
+            if frame == "perifocal":
+                frame = Frame(name="perifocal",
+                              Omega0_bc_frame=orbit0.Omega0,
+                              Omega_dot_bc_frame=orbit0.Omega_dot,
+                              omega0_bc_frame=orbit0.omega0,
+                              omega_dot_bc_frame=orbit0.omega_dot,
+                              i0_bc_frame=orbit0.i,
+                              t_clock_bc_frame=orbit0.t0_clock)
+            elif frame == "perifocal_t0":
+                frame = Frame(name="perifocal_t0",
+                              Omega0_bc_frame=orbit0.Omega0,
+                              Omega_dot_bc_frame=0,
+                              omega0_bc_frame=orbit0.omega0,
+                              omega_dot_bc_frame=0,
+                              i0_bc_frame=orbit0.i,
+                              t_clock_bc_frame=orbit0.t0_clock)
+            elif frame == "bodycentric":
+                frame = Frame.bodycentric()
+            elif frame == "rotating_bodycentric":
+                frame = Frame.rotating_bodycentric(orbit0.main_body)
+            else:
+                raise ValueError("Invalid frame name. Please use 'perifocal', 'perifocal_t0', 'bodycentric', 'rotating_bodycentric' or a custom Frame object.")
+        if not isinstance(frame, Frame):
+            raise ValueError("The 'frame' parameter must be an instance of the Frame class")
+        
+        fig_gt = plt.figure(figsize=(16, 9))
+        ax_gt = fig_gt.add_subplot()
+
+        annotations = []  # List to store all annotations        
+        
+        for orbit_number in trajectory.orbits:
+            orbit = trajectory.orbits[orbit_number]['orbit']
+            t1_clock = self.trajectory.get_trajectory_position(orbit_number, position_index="last")['t_clock']
+            t0_clock = self.trajectory.get_trajectory_position(orbit_number, position_index="first")['t_clock']
+            for position in trajectory.orbits[orbit_number]['trajectory_positions']:
+                r_vec = orbit.state_vectors_at_t_clock(position['t_clock'], frame=frame)[0]
+                ra, dec = frame.convert_cartesian_to_ra_dec(r_vec)
+                t_clock = position['t_clock']
+                t_norm = (t_clock - t0_clock) / (t1_clock - t0_clock)
+                color = self.color_gradient(t_norm)
+                point_plot = ax_gt.plot(ra, dec, 'o', color=color,
+                                        picker=True, pickradius=5,
+                                        markersize=5, zorder=4)[0]
+                    
+                # Create annotation
+                annotation = ax_gt.annotate(f't = {t_clock:.2f}s',
+                    xy=(ra, dec), xytext=(10, 10),
+                    textcoords='offset points',
+                    bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5),
+                    arrowprops=dict(arrowstyle='->'),
+                    visible=False,
+                    zorder=10)
+                
+                annotations.append((point_plot, annotation))
+            
+            # Hover function that manages all annotations
+            def hover(event):
+                if event.inaxes == plt.gca():
+                    for point_plot, annotation in annotations:
+                        cont, _ = point_plot.contains(event)
+                        annotation.set_visible(cont)
+                    plt.draw()
+            
+            fig_gt.canvas.mpl_connect('motion_notify_event', hover)
+            
+            ##### Continuous line #####
+            times = np.linspace(t0_clock, t1_clock, samples)
+            for t in times:
+                r_vec = orbit.state_vectors_at_t_clock(t, frame=frame)[0]
+                ra, dec = frame.convert_cartesian_to_ra_dec(r_vec)
+                t_norm = (t - t0_clock) / (t1_clock - t0_clock)
+                color = self.color_gradient(t_norm)
+                ax_gt.plot(ra, dec, '.', color=color,
+                        alpha=0.6, markersize=3, zorder=3)
+
+        ax_gt.legend(bbox_to_anchor=(1.02, 1), loc='upper left')
+        ax_gt.set_xlabel('Right Ascension (°)')
+        ax_gt.set_ylabel('Declination (°)')
+        ax_gt.set_xlim(-180, 180)
+        ax_gt.set_ylim(-90, 90)
+        ax_gt.grid(True)
+        ax_gt.axhline(y=0, color='k', linestyle='-', linewidth=1)
+        ax_gt.axvline(x=0, color='k', linestyle='-', linewidth=1)
+
+        # Add text for coordinates
+        coord_text = ax_gt.text(0.02, 0.98, '', transform=ax_gt.transAxes, 
+                            bbox=dict(facecolor='white', alpha=0.7),
+                            verticalalignment='top')
+
+        # Show coordinates on hover
+        def update_coords(event):
+            if event.inaxes == ax_gt:
+                ra = event.xdata
+                dec = event.ydata
+                coord_text.set_text(f'RA: {ra:.2f}°\nDec: {dec:.2f}°')
+                plt.draw()
+
+        plt.gcf().canvas.mpl_connect('motion_notify_event', update_coords)
+
+        plt.title(f'Groundtrack')
+        plt.tight_layout()
+        plt.get_current_fig_manager().window.showMaximized() # type: ignore
+        plt.show()

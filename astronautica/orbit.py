@@ -25,7 +25,7 @@ class Orbit:
         for name, value in attributes.items():
             # Format numbers as float with 4 decimal places
             if isinstance(value, (int, float)):
-                result += f"{name}: {value:.4f}\n"
+                result += f"{name}: {value:.12f}\n"
             else:
                 result += f"{name}: {value}\n"
 
@@ -285,7 +285,7 @@ class Orbit:
         return orbit
 
     @classmethod
-    def init_from_3_vectors(cls, main_body, r1_vec, r2_vec, r3_vec, t0_clock=0):
+    def from_3_vectors(cls, main_body, r1_vec, r2_vec, r3_vec, t0_clock=0):
         """
         Creates a new instance of Orbit from three position vectors using Gibb's method.
         """
@@ -308,7 +308,7 @@ class Orbit:
         D = np.linalg.norm(D_vec)
         
         # Calculate v1, v2, v3
-        v1_vec = (np.cross(D_vec, r1_vec) / r2 + S_vec) * np.sqrt(orbit.mu/(N * D))
+        v1_vec = (np.cross(D_vec, r1_vec) / r1 + S_vec) * np.sqrt(orbit.mu/(N * D))
         v2_vec = (np.cross(D_vec, r2_vec) / r2 + S_vec) * np.sqrt(orbit.mu/(N * D))
         v3_vec = (np.cross(D_vec, r3_vec) / r3 + S_vec) * np.sqrt(orbit.mu/(N * D))
 
@@ -329,6 +329,9 @@ class Orbit:
         orbit.theta0 = theta_r3
         r3 = orbit.r_at_theta(theta_r3)
         v3 = orbit.v_at_r(r3)
+        t_clock_r2 = t_clock_r2 - t_clock_r3
+        t_clock_r1 = t_clock_r1 - t_clock_r3
+        t_clock_r3 = t0_clock
         orbit.orbital_positions[0]['name'] = "Position 3 - Initial Position"
         orbit.orbital_positions[0]['t_clock'] = t_clock_r3
         orbit.orbital_positions[0]['theta'] = theta_r3
@@ -339,6 +342,104 @@ class Orbit:
         
         print("Initialized orbit from three position vectors.")
         return orbit
+
+    @classmethod
+    def from_2_vectors_and_delta_time(cls, main_body, r1_vec, r2_vec, delta_t, t0_clock=0):
+        """
+        Creates a new instance of Orbit from two position vectors and the time difference between them using Lambert's problem.
+        """
+        orbit = cls(main_body, _from_classmethod=True)
+        
+        r1 = np.linalg.norm(r1_vec)
+        r2 = np.linalg.norm(r2_vec)
+
+        C12 = np.cross(r1_vec, r2_vec)
+
+        #assuming a prograde orbit
+        if C12[2] >= 0:
+            delta_theta = np.degrees(np.arccos(np.dot(r1_vec, r2_vec) / (r1 * r2)))
+        else:
+            delta_theta = 360 - np.degrees(np.arccos(np.dot(r1_vec, r2_vec) / (r1 * r2)))
+        delta_theta_rad = np.radians(delta_theta)
+        A = np.sin(delta_theta_rad) * np.sqrt(r1 * r2 / (1 - np.cos(delta_theta_rad)))
+
+        def y(z):
+            return r1 + r2 + A * (z*cls.S(z) - 1) / np.sqrt(cls.C(z))
+
+        def f(z):
+            return (y(z) / cls.C(z))**(3/2) * cls.S(z) + A*np.sqrt(y(z)) - np.sqrt(orbit.mu) * delta_t
+        
+        def f_dot(z):
+            y0 = y(0)
+            if z == 0:
+                return np.sqrt(2)/40 * y0**(3/2) + A/8 * (np.sqrt(y0) + A * np.sqrt(1 / (2*y0)))
+            else:
+                return (y(z)/cls.C(z))**(3/2) * (1/(2*z) * (cls.C(z) - 3/2*cls.S(z)/cls.C(z)) + 3/4*cls.S(z)**2/cls.C(z)) + A/8 * (3*cls.S(z)/cls.C(z)*np.sqrt(y(z)) + A*np.sqrt(cls.C(z)/y(z)))
+        
+        z0 = 0
+        z = root_scalar(f, fprime=f_dot, x0=z0, method='newton').root
+        yz = y(z)
+        
+        f = 1 - yz/r1
+        g = A * np.sqrt(yz / orbit.mu)
+        g_dot = 1 - yz/r2
+
+        v1_vec = 1/g * (r2_vec - f*r1_vec)
+        v2_vec = 1/g * (g_dot*r2_vec - r1_vec)
+
+        orbita_instance = cls.from_state_vectors(main_body, r2_vec, v2_vec, t0_clock=t0_clock)
+        theta_r2 = orbita_instance.theta0
+        theta_r1 = orbita_instance.theta_at_state_vectors(r1_vec, v1_vec)
+        if theta_r1 > theta_r2:
+            theta_r1 = theta_r1 - 360
+        orbita_instance.add_orbital_position(theta=theta_r1, name="Position 1")
+        orbita_instance.orbital_positions[0]['name'] = "Position 2 - Initial Position"
+        return orbita_instance
+
+    @classmethod
+    def from_2_radii_delta_t_delta_theta(cls, main_body, r1, r2, delta_t, delta_theta, t0_clock=0):
+        """
+        Creates a new instance of Orbit from two radii and the angle difference between them.
+        """
+        orbit = cls(main_body, _from_classmethod=True)
+        
+        delta_theta_rad = np.radians(delta_theta)
+        A = np.sin(delta_theta_rad) * np.sqrt(r1 * r2 / (1 - np.cos(delta_theta_rad)))
+
+        def y(z):
+            return r1 + r2 + A * (z*cls.S(z) - 1) / np.sqrt(cls.C(z))
+
+        def f(z):
+            return (y(z) / cls.C(z))**(3/2) * cls.S(z) + A*np.sqrt(y(z)) - np.sqrt(orbit.mu) * delta_t
+        
+        def f_dot(z):
+            y0 = y(0)
+            if z == 0:
+                return np.sqrt(2)/40 * y0**(3/2) + A/8 * (np.sqrt(y0) + A * np.sqrt(1 / (2*y0)))
+            else:
+                return (y(z)/cls.C(z))**(3/2) * (1/(2*z) * (cls.C(z) - 3/2*cls.S(z)/cls.C(z)) + 3/4*cls.S(z)**2/cls.C(z)) + A/8 * (3*cls.S(z)/cls.C(z)*np.sqrt(y(z)) + A*np.sqrt(cls.C(z)/y(z)))
+        
+        z0 = 0
+        z = root_scalar(f, fprime=f_dot, x0=z0, method='newton').root
+        yz = y(z)
+
+        f = 1 - yz/r1
+        g = A * np.sqrt(yz / orbit.mu)
+        g_dot = 1 - yz/r2
+
+        r1_vec = np.array(cls.convert_polar_to_cartesian(r1, 0, 0))
+        r2_vec = np.array(cls.convert_polar_to_cartesian(r2, delta_theta, 0))
+        v1_vec = 1/g * (r2_vec - f*r1_vec)
+        v2_vec = 1/g * (g_dot*r2_vec - r1_vec)
+
+        orbita_instance = cls.from_state_vectors(main_body, r2_vec, v2_vec, t0_clock=t0_clock)
+        theta_r2 = orbita_instance.theta0
+        theta_r1 = orbita_instance.theta_at_state_vectors(r1_vec, v1_vec)
+        if theta_r1 > theta_r2:
+            theta_r1 = theta_r1 - 360
+        orbita_instance.add_orbital_position(theta=theta_r1, name="Position 1")
+        orbita_instance.orbital_positions[0]['name'] = "Position 2 - Initial Position"
+        return orbita_instance
 
     def finish_init(self):
         self.Omega_dot, self.omega_dot = self.oblateness_correction()
@@ -683,11 +784,12 @@ class Orbit:
         Calculates the oblateness correction factor for node regression and perigee advance.
         """
         if self.e >= 1:
-            raise ValueError("Can't calculate oblateness correction for parabolic or hyperbolic orbits.")
+            # No oblateness correction for hyperbolic orbits
+            return 0, 0
         i = np.radians(self.i)
         coeficient = - 3/2 * np.sqrt(self.mu) * self.main_body.J2 * self.main_body.radius**2 / (self.a**(7/2) * (1 - self.e**2)**2)
         Omega_dot = np.degrees(coeficient * np.cos(i))
-        omega_dot = np.degrees(coeficient * (5/2 * np.sin(i)**2 - 2)) 
+        omega_dot = np.degrees(coeficient * (5/2 * np.sin(i)**2 - 2))
         return Omega_dot, omega_dot
 
     def r_at_theta(self, theta):
@@ -699,7 +801,7 @@ class Orbit:
   
     def state_vectors_at_theta(self, theta, frame="bodycentric"):
         """
-        Calculates the state vectors at a given true anomaly, in a given frame of reference, at time t0.
+        Calculates the state vectors at a given true anomaly, in a given frame of reference.
 
         :param theta: True anomaly (degrees)
         :param frame: a Frame object or a string to create a Frame object
@@ -714,13 +816,13 @@ class Orbit:
             if not self.omega_dot and not self.Omega_dot:
                 Q_bc_peri = self.Q_bc_perit0
             else:
-                t_clock = self.t_orbit_at_theta(theta) + self.time_offset
+                t_clock = self.t_clock_at_theta(theta)
                 Q_bc_peri = self.Q_bc_peri_from_t_clock(t_clock)
             r_vec = Q_bc_peri.T @ r_vec_peri
             v_vec = Q_bc_peri.T @ v_vec_peri
             return r_vec, v_vec
         else:
-            t_clock = self.t_orbit_at_theta(theta) + self.time_offset
+            t_clock = self.t_clock_at_theta(theta)
             r_vec_bc, v_vec_bc = self.state_vectors_at_theta(theta, frame="bodycentric")
             r_vec_frame, v_vec_frame = frame.transform_bc_to_frame(np.column_stack((r_vec_bc, v_vec_bc)), t_clock).T
             return r_vec_frame, v_vec_frame
@@ -830,7 +932,30 @@ class Orbit:
             return np.sqrt(self.mu * 2 / r)
         else:
             return np.sqrt(self.mu * (2 / r - 1 / self.a))
+    
+    def v_at_theta(self, theta):
+        """
+        Calculates the orbital velocity at a given true anomaly.
+        """
+        r = self.r_at_theta(theta)
+        return self.v_at_r(r)
 
+    def RTN_at_theta(self, theta):
+        """
+        Calculates the radial, tangential and normal velocity vectors at a given true anomaly.
+        """
+        gamma = self.gamma_at_theta(theta)
+        v = self.v_at_theta(theta)
+        v_t = v * np.cos(gamma)
+        v_r = v * np.sin(gamma)
+        return np.array([v_r, v_t, 0])
+    
+    def RPN_at_theta(self, theta):
+        """
+        Calculates the radial, prograde and normal velocity vectors at a given true anomaly.
+        """
+        v = self.v_at_theta(theta)
+        return np.array([0, v, 0])
 
     ########### ROTATION MATRICES ###########
     @staticmethod
@@ -996,7 +1121,7 @@ class Orbit:
         if self.e < 1:
             return np.degrees(2 * np.arctan(np.sqrt((1 - self.e) / (1 + self.e)) * np.tan(theta/2)))
         elif self.e > 1:
-            return np.degrees(2 * np.arctan(np.sqrt((self.e - 1) / (self.e + 1)) * np.tan(theta/2)))
+            return np.degrees(2 * np.arctanh(np.sqrt((self.e - 1) / (self.e + 1)) * np.tan(theta/2)))
         else:
             raise ValueError("Can't calculate eccentric anomaly from true anomaly for parabolic orbits.")
 
@@ -1011,6 +1136,85 @@ class Orbit:
             return np.degrees(2 * np.arctan(np.sqrt((self.e + 1) / (self.e - 1)) * np.tanh(E/2)))
         else:
             raise ValueError("Can't calculate true anomaly from eccentric anomaly for parabolic orbits.")
+
+
+    ###########   CONVERSIONS   ###########
+    @staticmethod
+    def convert_cartesian_to_polar(r_vec_xyz):
+        """
+        Converts Cartesian coordinates to polar coordinates.
+        """
+        r = np.sqrt(r_vec_xyz[0]**2 + r_vec_xyz[1]**2)
+        theta = np.mod(np.degrees(np.arctan2(r_vec_xyz[1], r_vec_xyz[0])), 360)
+        return r, theta
+
+    @staticmethod
+    def convert_polar_to_cartesian(r, theta, z=0):
+        """
+        Converts polar coordinates to Cartesian coordinates.
+        """
+        theta = np.radians(theta)
+        return (r * np.cos(theta), r * np.sin(theta), z)
+
+    def convert_RTN_to_cartesian(self, RTN, t_clock, frame="perifocal"):
+        """
+        Converts the radial, tangential and normal velocity vectors to the Cartesian frame.
+        """
+        if frame == "perifocal":
+            theta = self.theta_at_t_clock(t_clock)
+            Q_peri_RTN = self.Q_from_Euler_angles(theta, 0, 0, pattern="z")
+            return Q_peri_RTN.T @ RTN
+        elif frame == "bodycentric":
+            Q_bc_RTN = self.Q_bc_peri_from_t_clock(t_clock)
+            return Q_bc_RTN.T @ self.convert_RTN_to_cartesian(RTN, t_clock, frame="perifocal")
+        else:
+            raise ValueError("Invalid frame. Must be 'perifocal' or 'bodycentric'.")
+        
+    def convert_RPN_to_cartesian(self, RPN, t_clock, frame="perifocal"):
+        """
+        Converts the RPN vectors to the Cartesian frame.
+        """
+        RTN = self.convert_RPN_to_RTN(RPN, t_clock)
+        if frame == "perifocal":
+            return self.convert_RTN_to_cartesian(RTN, t_clock, frame="perifocal")
+        elif frame == "bodycentric":
+            return self.convert_RTN_to_cartesian(RTN, t_clock, frame="bodycentric")
+        else:
+            raise ValueError("Invalid frame. Must be 'perifocal' or 'bodycentric'.")
+
+    def convert_RPN_to_RTN(self, RPN, t_clock):
+        """
+        Converts the RPN vectors to the RTN frame.
+        """
+        theta = self.theta_at_t_clock(t_clock)
+        gamma = np.radians(self.gamma_at_theta(theta))
+        RTN = np.array([RPN[0] + RPN[1]*np.sin(gamma), RPN[1] * np.cos(gamma), RPN[2]])
+        return RTN
+
+    ###########   Stumpff functions   ###########
+    @staticmethod
+    def S(z):
+        """
+        Stumpff function S(z).
+        """
+        if z > 0:
+            return (np.sqrt(z) - np.sin(np.sqrt(z)))/np.sqrt(z)**3
+        elif z < 0:
+            return (np.sinh(np.sqrt(-z)) - np.sqrt(-z))/np.sqrt(-z)**3
+        else: # z = 0
+            return 1/6
+
+    @staticmethod
+    def C(z):
+        """
+        Stumpff function C(z).
+        """
+        if z > 0:
+            return (1 - np.cos(np.sqrt(z)))/z
+        elif z < 0:
+            return (np.cosh(np.sqrt(-z)) - 1)/(-z)
+        else: # z = 0
+            return 1/2
 
 
     ########### ADDING POINTS ###########

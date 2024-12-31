@@ -9,7 +9,7 @@ h = 100000
 orbita = Orbit.from_elements(earth, e=e, h=h, Omega0=140, i=-30, omega0=90, theta0=-30, t0_clock=100)
 
 # Plotar a órbita
-plotter = Plotter(frame="bodycentric", plot3d=True)
-plotter.plot_orbit(orbita)
+plotter = Plotter(plot3d=True)
+plotter.plot_orbit(orbita, frame="bodycentric", points=True, velocities=True, positions=True)
 
 print(orbita)

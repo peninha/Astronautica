@@ -29,3 +29,5 @@ print(v_vec)
 
 plotter = Plotter(plot3d=True)
 plotter.plot_trajectory(trajetoria, samples=1000, frame="bodycentric", orbits=False, velocities=True)
+
+#print(orbita)
