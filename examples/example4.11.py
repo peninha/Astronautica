@@ -20,7 +20,7 @@ v_vec = np.array([4.7, -7.4, 1])
 orbita = Orbit.from_state_vectors(earth, r_vec, v_vec, t0_clock=t0_clock)
 
 
-trajetoria = Trajectory(orbit0=orbita, t0_clock=t0_clock)
+trajetoria = Trajectory(orbit0=orbita)
 trajetoria.add_trajectory_position(0, t_clock=t1_clock, name="Final Position")
 
 r_vec, v_vec = orbita.state_vectors_at_t_clock(t1_clock, frame="bodycentric")

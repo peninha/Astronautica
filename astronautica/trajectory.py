@@ -68,8 +68,7 @@ class Trajectory:
         self.add_trajectory_position(orbit_number + 1, maneuver.t_clock, theta_node, name="Maneuver position")
         return new_orbit
 
-
-    def add_trajectory_position(self, orbit_number=0, t_clock=None, theta=None, name=None):
+    def add_trajectory_position(self, orbit_number=0, t_clock=None, theta=None, name="Position"):
         """
         Adds a trajectory position to a specific orbit in the trajectory.
         """

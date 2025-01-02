@@ -74,5 +74,5 @@ print(f"k) Ângulo de trajetória máximo: {gamma_max:.2f}° em theta = {theta_m
 orbita.add_orbital_position(theta=0, name="Perigeu")
 orbita.add_orbital_position(theta=180, name="Apogeu")
 
-plotter = Plotter(frame="bodycentric", plot3d=True)
+plotter = Plotter(plot3d=True)
 plotter.plot_orbit(orbita)

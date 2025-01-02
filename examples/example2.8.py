@@ -34,4 +34,4 @@ print(f"c) Semi-eixo maior: {a:.2f} km")
 print(f"d) Período: {periodo/60:.2f} horas")
 
 # Plotando a órbita
-Plotter(frame="bodycentric", plot3d=True).plot_orbit(orbita)
+Plotter(plot3d=True).plot_orbit(orbita)

@@ -57,17 +57,21 @@ class Maneuver:
         """
         Calculate the delta-v for a phase change in an orbit.
         """
+        T_burn_to_phase = orbit.t_clock_at_theta(theta_burn + phase_change) - orbit.t_clock_at_theta(theta_burn)
+        delta_T = T_burn_to_phase/n
+        T1 = orbit.T - delta_T
         v0 = orbit.v_at_theta(theta_burn)
-        a0 = orbit.a
-        theta_prime = theta_burn + phase_change
-        T1 = orbit.t_clock_at_theta(theta_prime + 360 - phase_change) - orbit.t_clock_at_theta(theta_prime)
-        a1 = (T1 * np.sqrt(orbit.mu)/(2*np.pi))**(2/3)
-        rp1 = orbit.rp
-        ra1 = 2*a1 - rp1
-        e1 = orbit.e_from_rp_ra(rp1, ra1)
-        h1 = orbit.h_from_a_e(a1, e1)
-        v1 = h1 / rp1
+        r = orbit.r_at_theta(theta_burn)
+        v1 = np.sqrt((2*orbit.mu/r) - (2*np.pi*orbit.mu/T1)**(2/3))
         delta_v = v1 - v0
-        return delta_v, -delta_v
+        return delta_v, -delta_v, T1
 
-    
+    @classmethod
+    def phase_maneuver(cls, orbit, phase_change, theta_burn=0, n=1):
+        """
+        Calculate the delta-v for a phase change in an orbit.
+        """
+        delta_v1, delta_v2, T1 = cls.delta_v_for_phase_change(orbit, phase_change, theta_burn, n)
+        phase_maneuver1 = cls.from_RPN(0, delta_v1, 0, orbit.t_clock_at_theta(theta_burn), name="Phase Maneuver 1")
+        phase_maneuver2 = cls.from_RPN(0, delta_v2, 0, orbit.t_clock_at_theta(theta_burn) + T1*n, name="Phase Maneuver 2")
+        return phase_maneuver1, phase_maneuver2

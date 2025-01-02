@@ -12,7 +12,7 @@ T_dia_sinodico = 24 * 60 * 60  # [s]
 T_dia_sideral = T_dia_sinodico / (1 + 1/365.25)
 
 omega_GEO = 2 * np.pi / T_dia_sideral
-mu = earth.mass * Orbit.G
+mu = earth.mu()
 R_GEO = (mu / omega_GEO**2)**(1/3)
 
 # Criar órbita com período de um dia
@@ -27,4 +27,4 @@ print(f"Velocidade na órbita geoestacionária: {vGEO:.3f} km/s")
 print(f"Período orbital: {orbita_GEO.T/3600:.3f} horas")
 
 # Plotar a órbita
-Plotter(frame="bodycentric", plot3d=True).plot_orbit(orbita_GEO)
+Plotter(plot3d=True).plot_orbit(orbita_GEO)

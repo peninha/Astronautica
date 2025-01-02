@@ -520,7 +520,7 @@ class Orbit:
         """
         return np.sqrt(self.mu * rp * (1 + e))
 
-    def e_vec_from_state_vectors(self, r_vec, v_vec):
+    def  e_vec_from_state_vectors(self, r_vec, v_vec):
         """
         Calculates the eccentricity vector using state vectors.
         Both vectors must be in the same reference frame.
@@ -749,6 +749,12 @@ class Orbit:
             raise ValueError("Can't calculate hyperbolic excess velocity for elliptical or parabolic orbits.")
         return np.sqrt(self.mu/self.a)
 
+    def theta_ascending_node(self):
+        """
+        Calculates the true anomaly (theta) of the ascending node.
+        """
+        theta = -self.omega0
+        return np.mod(theta, 360)
 
     ########### DYNAMIC PARAMETERS ###########
     def gamma_at_theta(self, theta):
