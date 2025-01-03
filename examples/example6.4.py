@@ -30,7 +30,7 @@ traj2 = Trajectory(orbita2)
 traj2.add_trajectory_position(0, traj1.get_trajectory_position(2, position_index="last")['t_clock'], name="Position 2")
 
 
-plotter = Plotter(plot3d=True)
+plotter = Plotter(plot3d=False)
 plotter.plot_trajectories([traj1, traj2],
                         frame="bodycentric",
                         points=True,
@@ -38,6 +38,6 @@ plotter.plot_trajectories([traj1, traj2],
                         positions=True,
                         orbits=False,
                         maneuvers=True,
-                        time_step=300,
+                        time_step=60,
                         v_scale=30)
 

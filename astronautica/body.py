@@ -19,6 +19,13 @@ class Body:
                    "J2": 1.08262668e-3,
                    #"J2": 1.08263e-3,
                    "flatness": 0.0033528},
+        "squished_earth": {"mass": 5.972e24,
+                   "radius": 6378.137,
+                   #"radius": 6378,
+                   "rotation_speed": 0.004178074216,
+                   "J2": 1.08262668e-3 * 100,
+                   #"J2": 1.08263e-3,
+                   "flatness": 0.0033528 * 100},
         "moon": {"mass": 7.34767309e22, "radius": 1737.4, "rotation_speed": 0.0001525041, "J2": 0.0, "flatness": 0.0},
         "mars": {"mass": 6.4171e23, "radius": 3389.5, "rotation_speed": 0.004061248134, "J2": 0.00589, "flatness": 0.00589},
     }

@@ -221,22 +221,15 @@ class Orbit:
         gamma_rad = np.radians(gamma)
         v_r = v * np.sin(gamma_rad)
         v_t = v * np.cos(gamma_rad)
-        h = r * v_t
-        e = np.sqrt(v_r**2*h**2/orbit.mu**2 + (h**2/(orbit.mu*r) - 1)**2)
-        a = orbit.a_from_h_e(h, e)
-        rp = orbit.rp_from_h_e(h, e)
-        ra = orbit.ra_from_h_e(h, e)
-        theta0 = orbit.theta_from_r_gamma(r, gamma)
-        
-        orbit.h = h
-        orbit.e = e
-        orbit.a = a
-        orbit.rp = rp
-        orbit.ra = ra
+        orbit.h = r * v_t
+        orbit.e = np.sqrt(v_r**2*orbit.h**2/orbit.mu**2 + (orbit.h**2/(orbit.mu*r) - 1)**2)
+        orbit.a = orbit.a_from_h_e(orbit.h, orbit.e)
+        orbit.rp = orbit.rp_from_h_e(orbit.h, orbit.e)
+        orbit.ra = orbit.ra_from_h_e(orbit.h, orbit.e)
+        orbit.theta0 = orbit.theta_from_r_gamma(r, gamma)
         orbit.i = i
         orbit.Omega0 = Omega0
         orbit.omega0 = omega0
-        orbit.theta0 = theta0
         orbit.t0_clock = t0_clock
         orbit.finish_init()
         print("Initialized orbit from distance, velocity and flight path angle.")
@@ -485,6 +478,12 @@ class Orbit:
             return float('inf')
         return h**2 / (self.mu * (1 - e**2))
 
+    def a_from_r_v(self, r, v):
+        """
+        Calculates the semi-major axis using position and velocity vectors.
+        """
+        return 1/(2/r - v**2/self.mu)
+
     def e_from_h_a(self, h, a):
         """
         Calculates the eccentricity using specific angular momentum and semi-major axis.
@@ -551,6 +550,14 @@ class Orbit:
         """
         theta_rad = np.radians(theta)
         return np.sqrt(self.mu * r * (1 + e * np.cos(theta_rad)))
+
+    @staticmethod
+    def h_from_r_v_gamma(r, v, gamma):
+        """
+        Calculates the specific angular momentum using position, velocity and flight path angle.
+        """
+        gamma = np.radians(gamma)
+        return r * v * np.cos(gamma)
 
     @staticmethod
     def h_vec_from_state_vectors(r_vec, v_vec):
@@ -883,9 +890,10 @@ class Orbit:
         if self.e == 0:  # circular orbit
             theta = 0
         else:
-            sin_theta = np.sin(gamma) * (1 + self.h**2/(self.mu*r)) / self.e
             cos_theta = (self.h**2/(self.mu*r) - 1) / self.e
-            theta = np.mod(np.degrees(np.arctan2(sin_theta, cos_theta)), 360)
+            theta = np.degrees(np.arccos(cos_theta))
+            if gamma < 0:
+                theta = 360 - theta
         return theta
 
     def theta_at_t_clock(self, t_clock):
@@ -1259,3 +1267,9 @@ class Orbit:
         
         self.points_in_orbital_plane.append(point)
 
+    def copy(self):
+        """
+        Creates a deep copy of the current orbit.
+        """
+        import copy
+        return copy.deepcopy(self)

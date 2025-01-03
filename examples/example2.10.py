@@ -58,4 +58,4 @@ b = orbita.aiming_radius()
 print(f"h) Raio de mira: {b:.2f} km")
 
 # Plotar a órbita
-Plotter(frame="bodycentric", plot3d=True).plot_orbit(orbit=orbita)
+Plotter(plot3d=True).plot_orbit(orbit=orbita)
