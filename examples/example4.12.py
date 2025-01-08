@@ -24,7 +24,7 @@ omega_earth = np.degrees(7.292115e-5) # [°/s]
 
 theta0 = 230 # [°]
 t0_clock = 0 # [s]
-t1_clock = 45*60 # [s]
+t1_clock = 45*60*1 # [s]
 
 orbita = Orbit.from_elements(main_body=earth, rp=rp, ra=ra, theta0=theta0, Omega0=Omega0, i=i0, omega0=omega0)
 print(orbita)
@@ -43,17 +43,17 @@ ra_1, dec_1 = Frame.convert_cartesian_to_ra_dec(r_vec_rbc_1)
 print("ra_1: ", ra_1)
 print("dec_1: ", dec_1)
 
-trajetoria = Trajectory(orbita, t0_clock=t0_clock)
+trajetoria = Trajectory(orbita)
 trajetoria.add_trajectory_position(0, t1_clock, theta1, name="Position 1")
 
 plotter = Plotter(plot3d=True)
 plotter.plot_trajectory(trajetoria,
-                        samples=50,
                         frame="rotating_bodycentric",
+                        time_step=60,
                         orbits=True,
                         points=True,
                         velocities=True,    
                         positions=True,
                         groundtrack=False)
 
-plotter.plot_groundtrack(trajetoria, samples=200)
+plotter.plot_groundtrack(trajetoria, time_step=60)

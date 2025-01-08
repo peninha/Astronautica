@@ -92,7 +92,7 @@ class Plotter:
 
 
     ########## Draw functions ##########
-    def draw_body(self, body, r_vec_bc, t_clock_bc, label="Central Body", color=(1,0,0,0.4)):        
+    def draw_body(self, body, r_vec_bc, t_clock_bc, equator=True, label=None, color=(1,0,0,0.4)):        
         # Body surface
         u = np.linspace(0, 2 * np.pi, 36)
         v = np.linspace(0, np.pi, 36)
@@ -100,7 +100,7 @@ class Plotter:
                                r_vec_bc[1] + body.radius * np.outer(np.sin(u), np.sin(v)),
                                r_vec_bc[2] + body.radius * np.outer(np.ones(np.size(u)), np.cos(v))])
         sphere_vec = self.frame.transform_bc_to_frame(sphere_vec_bc, t_clock_bc)
-        if label == "Central Body":
+        if equator:
             # Equator line
             phi = np.linspace(0, 2 * np.pi, 36)
             equator_vec_bc = np.array([r_vec_bc[0] + body.radius * np.cos(phi),
@@ -114,6 +114,8 @@ class Plotter:
                 self.ax.plot(equator_vec[0], equator_vec[1], color='gray')
         
         #plot body surface
+        if label is None:
+            label = body.name
         if self.plot3d:
             self.ax.plot_surface(sphere_vec[0], sphere_vec[1], sphere_vec[2], color=color, label=label, zorder=2)   # type: ignore
         else:
@@ -145,7 +147,7 @@ class Plotter:
                 r_vec_bc, v_vec_bc = orbit.state_vectors_at_theta(position['theta'], "bodycentric")
                 r_vec = self.frame.transform_bc_to_frame(r_vec_bc, position['t_clock'])
                 v_vec = self.frame.transform_bc_to_frame(v_vec_bc, position['t_clock'])
-                label += f'(t={position["t_clock"]:.2f}s)'
+                label += f'({position["t_clock"]:.2f}s)'
                 
                 if t_max == t_min:
                     t_norm = 1
@@ -170,7 +172,7 @@ class Plotter:
                     else:
                         self.ax.quiver(r_vec[0], r_vec[1], v_vec[0], v_vec[1], color=point_color, scale_units='xy', scale=1, width=0.003, zorder=5)
 
-    def draw_orbit(self, orbit, t_clock_bc=0, groundtrack=False, h_arrow=True, e_arrow=True, n_arrow=True, style="solid", color=(0,0,1,1), label="Orbit"):
+    def draw_orbit(self, orbit, t_clock_bc=0, groundtrack=False, h_arrow=True, e_arrow=True, n_arrow=True, style="solid", color=(0,0,1,1), label=None):
         """
         Draws the orbit
 
@@ -241,6 +243,8 @@ class Plotter:
             style = '-'
         elif style == "dashed": 
             style = '--'
+        if label is None:
+            label = orbit.name
         if self.plot3d:
             self.ax.plot(r_vecs[0], r_vecs[1], r_vecs[2], style, color=color, label=label, linewidth=2, zorder=1)
             if h_arrow:
@@ -283,10 +287,10 @@ class Plotter:
                     r_vec = r_vec / np.linalg.norm(r_vec) * orbit.main_body.radius
                 if self.plot3d:
                     point_plot = self.ax.plot(r_vec[0], r_vec[1], r_vec[2], 'o', color=point_color,
-                                        picker=True, pickradius=5, label=position['name']+f' (t={position["t_clock"]:.2f}s)', zorder=4)[0]
+                                        picker=True, pickradius=5, label=position['name']+f' ({position["t_clock"]:.2f}s)', zorder=4)[0]
                 else:
                     point_plot = self.ax.plot(r_vec[0], r_vec[1], 'o', color=point_color,
-                                        picker=True, pickradius=5, label=position['name']+f' (t={position["t_clock"]:.2f}s)', zorder=4)[0]
+                                        picker=True, pickradius=5, label=position['name']+f' ({position["t_clock"]:.2f}s)', zorder=4)[0]
                     # Create annotation
                     annotation = self.ax.annotate(f't = {position["t_clock"]:.2f}s',
                         xy=(r_vec[0], r_vec[1]), xytext=(10, 10),
@@ -355,7 +359,7 @@ class Plotter:
         label = maneuver.name
         r_vec_bc = orbit.state_vectors_at_t_clock(maneuver.t_clock, "bodycentric")[0]
         r_vec = self.frame.transform_bc_to_frame(r_vec_bc, maneuver.t_clock)
-        label += f'(t={maneuver.t_clock:.2f}s)'
+        label += f' ({maneuver.t_clock:.2f}s)'
         
         if self.plot3d:
             self.ax.plot(r_vec[0], r_vec[1], r_vec[2], 'H', color=color, label=label, zorder=1, markersize=15)
@@ -372,7 +376,7 @@ class Plotter:
 
 
     ########## Plot functions ##########
-    def plot_orbit(self, orbit, frame="bodycentric", points=True, positions=True, velocities=True, groundtrack=False, v_scale=1):
+    def plot_orbit(self, orbit, frame="bodycentric", points=True, positions=True, velocities=True, groundtrack=False, v_scale=1, h_arrow=True, e_arrow=True, n_arrow=True):
         """
         Plots the orbit
         """
@@ -406,8 +410,8 @@ class Plotter:
             raise ValueError("The 'frame' parameter must be an instance of the Frame class")
         self.frame = frame
 
-        self.draw_body(orbit.main_body, r_vec_bc=np.array([0, 0, 0]), t_clock_bc=orbit.t0_clock, label="Central Body")
-        self.draw_orbit(orbit, t_clock_bc=orbit.t0_clock, groundtrack=groundtrack)
+        self.draw_body(orbit.main_body, r_vec_bc=np.array([0, 0, 0]), t_clock_bc=orbit.t0_clock)
+        self.draw_orbit(orbit, t_clock_bc=orbit.t0_clock, groundtrack=groundtrack, h_arrow=h_arrow, e_arrow=e_arrow, n_arrow=n_arrow)
         if points:
             self.draw_points(orbit)
         if positions:
@@ -425,7 +429,7 @@ class Plotter:
         plt.get_current_fig_manager().window.showMaximized() # type: ignore
         plt.show()
 
-    def plot_trajectory(self, trajectory, time_step=300, frame="bodycentric", orbits=True, points=True, positions=True, velocities=True, maneuvers=True, groundtrack=False, v_scale=1):
+    def plot_trajectory(self, trajectory, time_step=300, frame="bodycentric", orbits=True, orbit_arrows=False, points=True, positions=True, velocities=True, maneuvers=True, groundtrack=False, v_scale=1):
         """
         Plots the trajectory
         """
@@ -461,7 +465,7 @@ class Plotter:
         if not isinstance(frame, Frame):
             raise ValueError("The 'frame' parameter must be an instance of the Frame class")
         self.frame = frame
-        self.draw_body(orbit0.main_body, r_vec_bc=np.array([0, 0, 0]), t_clock_bc=orbit0.t0_clock, label="Central Body")
+        self.draw_body(orbit0.main_body, r_vec_bc=np.array([0, 0, 0]), t_clock_bc=orbit0.t0_clock)
 
         colors = [(1.0, 0.5, 0.0, 1),
                   (0.0, 0.0, 1.0, 1),
@@ -472,7 +476,15 @@ class Plotter:
         for orbit_number in trajectory.orbits:
             orbit = trajectory.orbits[orbit_number]['orbit']
             if orbits:
-                self.draw_orbit(orbit, t_clock_bc=orbit.t0_clock, groundtrack=groundtrack, h_arrow=False, e_arrow=True, n_arrow=True, style="dashed", color=colors[orbit_number%len(colors)], label=f"Orbit {orbit_number}")
+                if orbit_arrows:
+                    h_arrow = True
+                    e_arrow = True
+                    n_arrow = True
+                else:
+                    h_arrow = False
+                    e_arrow = False
+                    n_arrow = False
+                self.draw_orbit(orbit, t_clock_bc=orbit.t0_clock, groundtrack=groundtrack, h_arrow=h_arrow, e_arrow=e_arrow, n_arrow=n_arrow, style="dashed", color=colors[orbit_number%len(colors)], label=f"{orbit_number} - {orbit.name}")
             if points:
                 self.draw_points(orbit)
             self.draw_trajectory(orbit_number, time_step=time_step, positions=positions, velocities=velocities, groundtrack=groundtrack, color=colors[orbit_number%len(colors)], v_scale=v_scale)
@@ -607,6 +619,73 @@ class Plotter:
         plt.get_current_fig_manager().window.showMaximized() # type: ignore
         plt.show()
 
+    def plot_orbits(self, orbits, frame="bodycentric", points=True, positions=True, velocities=True, groundtrack=False, v_scale=1, h_arrow=True, e_arrow=True, n_arrow=True):
+        """
+        Plots the orbits
+        """
+        # Convert single input to list for uniform processing
+        if isinstance(orbits, Orbit):
+            orbits = [orbits]
+        
+        # Use first orbit of first trajectory to define frame
+        orbit0 = orbits[0]
+        if isinstance(frame, str):
+            if frame == "perifocal":
+                frame = Frame(name="perifocal",
+                              Omega0_bc_frame=orbit0.Omega0,
+                              Omega_dot_bc_frame=orbit0.Omega_dot,
+                              omega0_bc_frame=orbit0.omega0,
+                              omega_dot_bc_frame=orbit0.omega_dot,
+                              i0_bc_frame=orbit0.i,
+                              t_clock_bc_frame=orbit0.t0_clock)
+            elif frame == "perifocal_t0":
+                frame = Frame(name="perifocal_t0",
+                              Omega0_bc_frame=orbit0.Omega0,
+                              Omega_dot_bc_frame=0,
+                              omega0_bc_frame=orbit0.omega0,
+                              omega_dot_bc_frame=0,
+                              i0_bc_frame=orbit0.i,
+                              t_clock_bc_frame=orbit0.t0_clock)
+            elif frame == "bodycentric":
+                frame = Frame.bodycentric()
+            elif frame == "rotating_bodycentric":
+                frame = Frame.rotating_bodycentric(orbit0.main_body)
+            else:
+                raise ValueError("Invalid frame name. Please use 'perifocal', 'perifocal_t0', 'bodycentric', 'rotating_bodycentric' or a custom Frame object.")
+        if not isinstance(frame, Frame):
+            raise ValueError("The 'frame' parameter must be an instance of the Frame class")
+        self.frame = frame
+
+        # Draw central body once
+        self.draw_body(orbit0.main_body, r_vec_bc=np.array([0, 0, 0]), t_clock_bc=orbit0.t0_clock)
+
+        # Different colors for each orbit
+        orbit_colors = [(0.0, 0.0, 1.0, 1),
+                        (1.0, 0.8, 0.0, 1),
+                        (0.5, 0.0, 0.8, 1),
+                        (1.0, 0.0, 0.0, 1),
+                        (0.5, 0.5, 0.5, 1)]
+        
+        # For each orbit
+        for orbit_number, orbit in enumerate(orbits):
+            self.draw_orbit(orbit, t_clock_bc=orbit.t0_clock, groundtrack=groundtrack, color=orbit_colors[orbit_number%len(orbit_colors)], label=f"{orbit_number} - {orbit.name}", h_arrow=h_arrow, e_arrow=e_arrow, n_arrow=n_arrow)
+            if points:
+                self.draw_points(orbit)
+            if positions:
+                self.draw_positions(orbit, velocities=velocities, groundtrack=groundtrack, v_scale=v_scale)
+
+        self.ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left')
+        self.ax.set_xlabel('X (km)')
+        self.ax.set_ylabel('Y (km)')
+        if self.plot3d:
+            self.ax.set_zlabel('Z (km)') # type: ignore
+        self.ax.axis('equal')
+        self.ax.grid(True)
+        plt.title(f'Frame: {self.frame.name}')
+        plt.tight_layout()
+        plt.get_current_fig_manager().window.showMaximized() # type: ignore
+        plt.show()
+
     def plot_trajectories(self, trajectories, time_step=300, frame="bodycentric", orbits=True, points=True, positions=True, velocities=True, maneuvers=True, groundtrack=False, v_scale=1):
         """
         Plots a single or multiple trajectories
@@ -662,7 +741,7 @@ class Plotter:
         self.frame = frame
         
         # Draw central body once
-        self.draw_body(orbit0.main_body, r_vec_bc=np.array([0, 0, 0]), t_clock_bc=orbit0.t0_clock, label="Central Body")
+        self.draw_body(orbit0.main_body, r_vec_bc=np.array([0, 0, 0]), t_clock_bc=orbit0.t0_clock)
 
         # Different colors for each trajectory
         trajectory_colors = [(0.0, 0.0, 1.0, 1),

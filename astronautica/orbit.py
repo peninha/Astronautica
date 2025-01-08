@@ -69,9 +69,10 @@ class Orbit:
         self.h_vec_bc = np.zeros(3)
         self.e_vec_bc = np.zeros(3)
         self.n_vec_bc = np.zeros(3)
+        self.name = "orbit"
 
     @classmethod
-    def from_elements(cls, main_body, h=None, e=None, a=None, rp=None, ra=None, i=0.0, Omega0=0.0, omega0=0.0, theta0=0.0, t0_clock=0.0):
+    def from_elements(cls, main_body, h=None, e=None, a=None, rp=None, ra=None, i=0.0, Omega0=0.0, omega0=0.0, theta0=0.0, t0_clock=0.0, name="Orbit", position_name="Initial position"):
         """
         Initialize an orbit from Keplerian elements.
 
@@ -104,6 +105,8 @@ class Orbit:
             a = orbit.a_from_h_e(h, e)
             ra = orbit.ra_from_h_e(h, e)
         elif rp is not None and ra is not None:
+            if rp > ra:
+                raise ValueError("Periapsis radius must be less than apoapsis radius")
             e = orbit.e_from_rp_ra(rp, ra)
             h = orbit.h_from_rp_e(rp, e)
             a = orbit.a_from_h_e(h, e)
@@ -124,12 +127,12 @@ class Orbit:
         orbit.omega0 = omega0
         orbit.theta0 = theta0
         orbit.t0_clock = t0_clock
-        orbit.finish_init()
-        print("Initialized orbit from orbital elements.")
+        orbit.name = name
+        orbit.finish_init(position_name=position_name)
         return orbit
 
     @classmethod
-    def from_apsis(cls, main_body, rp, ra, i=0, Omega0=0, omega0=0, theta0=0, t0_clock=0):
+    def from_apsis(cls, main_body, rp, ra, i=0, Omega0=0, omega0=0, theta0=0, t0_clock=0, name="Orbit", position_name="Initial position"):
         """
         Initialize an orbit from periapsis and apoapsis radii.
 
@@ -156,18 +159,14 @@ class Orbit:
         orbit.omega0 = omega0
         orbit.theta0 = theta0
         orbit.t0_clock = t0_clock
-        orbit.finish_init()
-        print("Initialized orbit from periapsis and apoapsis radii.")
+        orbit.name = name
+        orbit.finish_init(position_name=position_name)
         return orbit
 
     @classmethod
-    def from_state_vectors(cls, main_body, r_vec_bc, v_vec_bc, t0_clock=0):
+    def from_state_vectors(cls, main_body, r_vec_bc, v_vec_bc, t0_clock=0, name="Orbit", position_name="Initial position"):
         """
         Initialize an orbit from state vectors from a bodycentric reference frame.
-
-        :param r_vec_bc: Position vector in the bodycentric reference frame (km)
-        :param v_vec_bc: Velocity vector in the bodycentric reference frame (km/s)
-        :param t0_clock: Time at t0 (s)
         """
         r_vec_bc = np.array(r_vec_bc)
         v_vec_bc = np.array(v_vec_bc)
@@ -199,12 +198,12 @@ class Orbit:
         orbit.omega0 = omega0
         orbit.theta0 = theta0
         orbit.t0_clock = t0_clock
-        orbit.finish_init()
-        print("Initialized orbit from state vectors.")
+        orbit.name = name
+        orbit.finish_init(position_name=position_name)
         return orbit
 
     @classmethod
-    def from_r_v_gamma(cls, main_body, r, v, gamma, i=0, Omega0=0, omega0=0, t0_clock=0):
+    def from_r_v_gamma(cls, main_body, r, v, gamma, i=0, Omega0=0, omega0=0, t0_clock=0, name="Orbit", position_name="Initial position"):
         """
         Creates a new instance of Orbit from distance, velocity and flight path angle.
 
@@ -231,12 +230,12 @@ class Orbit:
         orbit.Omega0 = Omega0
         orbit.omega0 = omega0
         orbit.t0_clock = t0_clock
-        orbit.finish_init()
-        print("Initialized orbit from distance, velocity and flight path angle.")
+        orbit.name = name
+        orbit.finish_init(position_name=position_name)
         return orbit
 
     @classmethod
-    def from_2_positions(cls, main_body, r1, theta1, r2, theta2, i=0, Omega0=0, omega0=0, t0_clock=0):
+    def from_2_positions(cls, main_body, r1, theta1, r2, theta2, i=0, Omega0=0, omega0=0, t0_clock=0, name="Orbit", position_name="Initial position"):
         """
         Creates a new instance of Orbit from two orbital positions (r,θ).
         
@@ -268,17 +267,17 @@ class Orbit:
         orbit.omega0 = omega0
         orbit.theta0 = theta2 #using theta2 as the initial position
         orbit.t0_clock = t0_clock
-        orbit.finish_init()
+        orbit.name = name
+        orbit.finish_init(position_name="Position 2 - " + position_name)
         
         # Adding Position 1 (r1, theta1)
         t_clock_1 = orbit.t_clock_at_theta(theta1)
         orbit.add_orbital_position(t_clock_1, name="Position 1")
         
-        print("Initialized orbit from two positions.")
         return orbit
 
     @classmethod
-    def from_3_vectors(cls, main_body, r1_vec, r2_vec, r3_vec, t0_clock=0):
+    def from_3_vectors(cls, main_body, r1_vec, r2_vec, r3_vec, t0_clock=0, name="Orbit", position_name="Initial position"):
         """
         Creates a new instance of Orbit from three position vectors using Gibb's method.
         """
@@ -306,7 +305,7 @@ class Orbit:
         v3_vec = (np.cross(D_vec, r3_vec) / r3 + S_vec) * np.sqrt(orbit.mu/(N * D))
 
         # Initialize with r2, for more accuracy
-        orbit = cls.from_state_vectors(main_body, r2_vec, v2_vec, t0_clock=t0_clock)
+        orbit = cls.from_state_vectors(main_body, r2_vec, v2_vec, t0_clock=t0_clock, name=name)
         theta_r2 = orbit.theta0
         theta_r1 = orbit.theta_at_state_vectors(r1_vec, v1_vec)
         theta_r3 = orbit.theta_at_state_vectors(r3_vec, v3_vec)
@@ -325,7 +324,7 @@ class Orbit:
         t_clock_r2 = t_clock_r2 - t_clock_r3
         t_clock_r1 = t_clock_r1 - t_clock_r3
         t_clock_r3 = t0_clock
-        orbit.orbital_positions[0]['name'] = "Position 3 - Initial Position"
+        orbit.orbital_positions[0]['name'] = "Position 3 - " + position_name
         orbit.orbital_positions[0]['t_clock'] = t_clock_r3
         orbit.orbital_positions[0]['theta'] = theta_r3
         orbit.orbital_positions[0]['r'] = r3
@@ -333,11 +332,10 @@ class Orbit:
         orbit.add_orbital_position(t_clock_r1, name="Position 1")
         orbit.add_orbital_position(t_clock_r2, name="Position 2")
         
-        print("Initialized orbit from three position vectors.")
         return orbit
 
     @classmethod
-    def from_2_vectors_and_delta_time(cls, main_body, r1_vec, r2_vec, delta_t, t0_clock=0):
+    def from_2_vectors_and_delta_time_book(cls, main_body, r1_vec, r2_vec, delta_t, t0_clock=0, name="Orbit", position_name="Initial position"):
         """
         Creates a new instance of Orbit from two position vectors and the time difference between them using Lambert's problem.
         """
@@ -380,17 +378,94 @@ class Orbit:
         v1_vec = 1/g * (r2_vec - f*r1_vec)
         v2_vec = 1/g * (g_dot*r2_vec - r1_vec)
 
-        orbita_instance = cls.from_state_vectors(main_body, r2_vec, v2_vec, t0_clock=t0_clock)
+        orbita_instance = cls.from_state_vectors(main_body, r2_vec, v2_vec, t0_clock=t0_clock, name=name)
         theta_r2 = orbita_instance.theta0
         theta_r1 = orbita_instance.theta_at_state_vectors(r1_vec, v1_vec)
         if theta_r1 > theta_r2:
             theta_r1 = theta_r1 - 360
         orbita_instance.add_orbital_position(theta=theta_r1, name="Position 1")
-        orbita_instance.orbital_positions[0]['name'] = "Position 2 - Initial Position"
+        orbita_instance.orbital_positions[0]['name'] = "Position 2 - " + position_name
         return orbita_instance
 
     @classmethod
-    def from_2_radii_delta_t_delta_theta(cls, main_body, r1, r2, delta_t, delta_theta, t0_clock=0):
+    def from_2_vectors_and_delta_time(cls, main_body, r1_vec, r2_vec, delta_t, t0_clock=0, z0=0, z_lower=-4*np.pi, z_upper=4*np.pi**2, max_iter=200, tol=1e-6, name="Orbit", position_name="Initial position"):
+        """
+        Creates a new instance of Orbit from two position vectors and the time difference between them using Lambert's problem.
+        
+        z = alpha * csi**2 is 
+        alpha is the inverse of 'a' (semi-major axis)
+        csi is the universal anomaly
+
+        :param z0: Initial guess for z (default: 0)
+        :param z_lower: Lower bound for z (default: -4*np.pi)
+        :param z_upper: Upper bound for z (default: 4*np.pi)
+        :param max_iter: Maximum number of iterations (default: 200)
+        :param tol: Tolerance for the solution (default: 1e-6)
+        """
+        def B(z):
+            return r1 + r2 + A * (z*cls.S(z) - 1) / np.sqrt(cls.C(z))
+
+        mu = main_body.mu()
+
+        # Assuming a prograde orbit
+        if np.cross(r1_vec, r2_vec)[2] >= 0:
+            tm = 1
+        else:
+            tm = -1
+        r1 = np.linalg.norm(r1_vec)
+        r2 = np.linalg.norm(r2_vec)
+        gamma = np.dot(r1_vec, r2_vec) / (r1 * r2)
+        if gamma < -1:
+            gamma = -1
+        A = tm * np.sqrt(r1*r2*(1 + gamma))
+        if A == 0:
+            raise ValueError("A is 0, can't calculate orbit.")
+
+        solved = False
+        z = z0
+        for i in range(max_iter):
+            C2 = cls.C(z)
+            C3 = cls.S(z)
+            B_z = r1 + r2 + A * (z*C3 - 1) / np.sqrt(C2)
+            if A > 0 and B_z < 0:
+                z = (1 - ((r1 + r2)*np.sqrt(C2))/A)/C3
+                z_lower = z
+                B_z = 0
+            csi = np.sqrt(B_z/C2)
+            delta_t_calc = 1/np.sqrt(mu) * (csi**3 * C3 + A*np.sqrt(B_z))
+            if np.abs(delta_t - delta_t_calc) < tol:
+                solved = True
+                break
+            if delta_t_calc <= delta_t:
+                z_lower = z
+            else:
+                z_upper = z
+            z = (z_lower + z_upper)/2
+        
+        if not solved:
+            raise RuntimeError(f"Algorithm failed to converge after {max_iter} iterations. Try different initial conditions or increase max_iter.")
+        
+        B_z = B(z)
+        if B_z < 0:
+            B_z *= -1
+        f = 1 - B_z/r1
+        g = A * np.sqrt(B_z / mu)
+        g_dot = 1 - B_z/r2
+
+        v1_vec = 1/g * (r2_vec - f*r1_vec)
+        v2_vec = 1/g * (g_dot*r2_vec - r1_vec)
+
+        orbit = cls.from_state_vectors(main_body, r2_vec, v2_vec, t0_clock=t0_clock, name=name)
+        theta_r2 = orbit.theta0
+        theta_r1 = orbit.theta_at_state_vectors(r1_vec, v1_vec)
+        if theta_r1 > theta_r2:
+            theta_r1 = theta_r1 - 360
+        orbit.add_orbital_position(theta=theta_r1, name="Position 1")
+        orbit.orbital_positions[0]['name'] = "Position 2 - " + position_name
+        return orbit
+
+    @classmethod
+    def from_2_radii_delta_t_delta_theta(cls, main_body, r1, r2, delta_t, delta_theta, t0_clock=0, name="Orbit", position_name="Initial position"):
         """
         Creates a new instance of Orbit from two radii and the angle difference between them.
         """
@@ -425,16 +500,16 @@ class Orbit:
         v1_vec = 1/g * (r2_vec - f*r1_vec)
         v2_vec = 1/g * (g_dot*r2_vec - r1_vec)
 
-        orbita_instance = cls.from_state_vectors(main_body, r2_vec, v2_vec, t0_clock=t0_clock)
+        orbita_instance = cls.from_state_vectors(main_body, r2_vec, v2_vec, t0_clock=t0_clock, name=name)
         theta_r2 = orbita_instance.theta0
         theta_r1 = orbita_instance.theta_at_state_vectors(r1_vec, v1_vec)
         if theta_r1 > theta_r2:
             theta_r1 = theta_r1 - 360
         orbita_instance.add_orbital_position(theta=theta_r1, name="Position 1")
-        orbita_instance.orbital_positions[0]['name'] = "Position 2 - Initial Position"
+        orbita_instance.orbital_positions[0]['name'] = "Position 2 - " + position_name
         return orbita_instance
 
-    def finish_init(self):
+    def finish_init(self, position_name="Initial position"):
         self.Omega_dot, self.omega_dot = self.oblateness_correction()
 
         self.frames = {
@@ -466,7 +541,7 @@ class Orbit:
         self.n_vec_bc = self.n_vec_from_h_vec(self.h_vec_bc)
         self.h = np.linalg.norm(self.h_vec_bc)
         self.n = np.linalg.norm(self.n_vec_bc)
-        self.add_orbital_position(self.t0_clock, name="Initial Position")
+        self.add_orbital_position(self.t0_clock, name=position_name)
 
     ########### ORBITAL ELEMENTS ###########
     def a_from_h_e(self, h, e):
@@ -1183,7 +1258,21 @@ class Orbit:
             return Q_bc_RTN.T @ self.convert_RTN_to_cartesian(RTN, t_clock, frame="perifocal")
         else:
             raise ValueError("Invalid frame. Must be 'perifocal' or 'bodycentric'.")
-        
+
+    def convert_cartesian_to_RTN(self, v_vec, t_clock, frame="perifocal"):
+        """
+        Converts the Cartesian vectors to the RTN frame.
+        """
+        if frame == "perifocal":
+            theta = self.theta_at_t_clock(t_clock)
+            Q_peri_RTN = self.Q_from_Euler_angles(theta, 0, 0, pattern="z")
+            return Q_peri_RTN @ v_vec
+        elif frame == "bodycentric":
+            v_vec_peri = self.Q_bc_peri_from_t_clock(t_clock) @ v_vec
+            return self.convert_cartesian_to_RTN(v_vec_peri, t_clock, frame="perifocal")
+        else:
+            raise ValueError("Invalid frame. Must be 'perifocal' or 'bodycentric'.")
+
     def convert_RPN_to_cartesian(self, RPN, t_clock, frame="perifocal"):
         """
         Converts the RPN vectors to the Cartesian frame.

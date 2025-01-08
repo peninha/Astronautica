@@ -1,16 +1,17 @@
 from .orbit import Orbit
+from .maneuver import Maneuver
 
 class Trajectory:
     """
     Class representing a trajectory.
     """
-    def __init__(self, orbit0, name="Initial Orbit"):
+    def __init__(self, orbit0, orbit_name="Initial Orbit", position_name="Initial position"):
         if not isinstance(orbit0, Orbit):
             raise ValueError("Orbit0 must be an instance of the Orbit class")
         
         self.orbits = []
-        self.add_orbit(orbit0, 0, name)
-        self.add_trajectory_position(0, orbit0.t0_clock, orbit0.theta0, name="Initial Position")
+        self.add_orbit(orbit0, 0, orbit_name)
+        self.add_trajectory_position(0, orbit0.t0_clock, orbit0.theta0, name=position_name)
 
     def __str__(self):
         # Get all attributes of the class
@@ -27,12 +28,15 @@ class Trajectory:
 
         return result
 
-    def add_orbit(self, orbit, orbit_number, name="Orbit"):
+    def add_orbit(self, orbit, orbit_number, name=None):
         """
         Adds a new orbit to the trajectory.
         """
         if not isinstance(orbit, Orbit):
             raise ValueError("orbit must be an instance of the Orbit class")
+        
+        if name is not None:
+            orbit.name = name
             
         # Convert self.orbits to a dictionary if it is not already
         if isinstance(self.orbits, list):
@@ -40,20 +44,25 @@ class Trajectory:
             
         self.orbits[orbit_number] = {
             "orbit": orbit,
-            "name": name,
             "trajectory_positions": [],  # List to store trajectory positions
             "maneuvers": []  # List to store maneuvers
         }
 
-    def add_maneuver(self, orbit_number, maneuver):
+    def add_maneuver(self, orbit_number, maneuver, name=None, orbit_name=None, position_name=None):
+        if not isinstance(maneuver, Maneuver):
+            raise ValueError("maneuver must be an instance of the Maneuver class")
+        
+        if name is None:
+            name = maneuver.name
+        if orbit_name is None:
+            orbit_name = maneuver.orbit_name
+        if position_name is None:
+            position_name = maneuver.position_name
+        
         self.orbits[orbit_number]["maneuvers"].append(maneuver)
         orbit = self.orbits[orbit_number]["orbit"]
         theta_node = orbit.theta_at_t_clock(maneuver.t_clock)
-        if maneuver.name is None:
-            name = "Maneuver"
-        else:
-            name = maneuver.name
-        self.add_trajectory_position(orbit_number, maneuver.t_clock, theta_node, name=name + " - " + str(orbit_number))
+        self.add_trajectory_position(orbit_number, maneuver.t_clock, theta_node, name=position_name)
 
         if maneuver.mode == "RTN":
             delta_v_vec_bc = orbit.convert_RTN_to_cartesian(maneuver.RTN, maneuver.t_clock, frame="bodycentric")
@@ -63,9 +72,9 @@ class Trajectory:
         new_v_vec_bc = v_vec_bc + delta_v_vec_bc
         
         maneuver.delta_v_vec_bc = delta_v_vec_bc
-        new_orbit = Orbit.from_state_vectors(orbit.main_body, r_vec_bc, new_v_vec_bc, t0_clock=maneuver.t_clock)
-        self.add_orbit(new_orbit, orbit_number + 1, name="Orbit after " + name + " - " + str(orbit_number))
-        self.add_trajectory_position(orbit_number + 1, maneuver.t_clock, theta_node, name="Maneuver position")
+        new_orbit = Orbit.from_state_vectors(orbit.main_body, r_vec_bc, new_v_vec_bc, t0_clock=maneuver.t_clock, name=orbit_name, position_name=position_name)
+        self.add_orbit(new_orbit, orbit_number + 1, name=orbit_name)
+        self.add_trajectory_position(orbit_number + 1, maneuver.t_clock, theta_node, name=position_name)
         return new_orbit
 
     def add_trajectory_position(self, orbit_number=0, t_clock=None, theta=None, name="Position"):
@@ -88,7 +97,7 @@ class Trajectory:
         position = {
             "t_clock": t_clock,
             "theta": theta,
-            "name": name
+            "name": str(orbit_number) + " - " + name
         }
         
         self.orbits[orbit_number]["trajectory_positions"].append(position)

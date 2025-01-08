@@ -86,3 +86,16 @@ class Body:
         return 398600
         #return self.G * self.mass
 
+    def geosynchronous_radius(self):
+        """
+        Calculate the geosynchronous radius of the body.
+        """
+        T = 360 / self.rotation_speed
+        return (self.mu() * T**2 / (4 * np.pi**2))**(1/3)
+    
+    def geosynchronous_altitude(self):
+        """
+        Calculate the geosynchronous altitude of the body.
+        """
+        return self.altitude(self.geosynchronous_radius())
+
