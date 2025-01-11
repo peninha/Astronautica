@@ -5,7 +5,7 @@ class Maneuver:
     """
     Class representing a maneuver.
     """
-    def __init__(self, radial, t_or_p, normal, t_clock, name="Maneuver", mode="RTN", orbit_name="Orbit", position_name="Maneuver position"):
+    def __init__(self, RXN, t_clock, name="Maneuver", mode="RTN", orbit_name="Orbit", position_name="Maneuver position"):
         """
         Initialize a maneuver.
 
@@ -25,14 +25,16 @@ class Maneuver:
             Mode of initialization - "RTN" or "RPN"
         """
         if mode == "RTN":
-            self.RTN = np.array([radial, t_or_p, normal])
+            self.RTN = np.array(RXN)
             self.RPN = None
+            self.delta_v = np.linalg.norm(self.RTN)
         elif mode == "RPN":
-            self.RPN = np.array([radial, t_or_p, normal]) 
+            self.RPN = np.array(RXN) 
             self.RTN = None
+            self.delta_v = None
         else:
             raise ValueError("Mode must be 'RTN' or 'RPN'")
-        
+
         self.mode = mode
         self.t_clock = t_clock
         self.name = name
@@ -45,22 +47,44 @@ class Maneuver:
         """
         Initialize a maneuver from radial, prograde and normal components.
         """
-        return cls(RPN[0], RPN[1], RPN[2], t_clock, name=name, mode="RPN", orbit_name=orbit_name, position_name=position_name)
+        return cls(RPN, t_clock, name=name, mode="RPN", orbit_name=orbit_name, position_name=position_name)
     
     @classmethod 
     def from_RTN(cls, RTN, t_clock, name="Maneuver", orbit_name="Orbit", position_name="Maneuver position"):
         """
         Initialize a maneuver from radial, tangential and normal components.
         """
-        return cls(RTN[0], RTN[1], RTN[2], t_clock, name=name, mode="RTN", orbit_name=orbit_name, position_name=position_name)
+        return cls(RTN, t_clock, name=name, mode="RTN", orbit_name=orbit_name, position_name=position_name)
 
+    @classmethod
+    def from_delta_v_and_angle(cls, delta_v, angle, t_clock, name="Maneuver", orbit_name="Orbit", position_name="Maneuver position"):
+        """
+        Initialize a maneuver from delta-v and angle to local horizon.
+
+        Parameters
+        ----------
+        delta_v : float
+            Delta-v of the maneuver
+        angle : float
+            Angle to local horizon
+        """
+        angle = np.radians(angle)
+        RPN = np.array([delta_v*np.sin(angle), delta_v*np.cos(angle), 0])
+        return cls(RPN, t_clock, name=name, mode="RPN", orbit_name=orbit_name, position_name=position_name)
+
+    @classmethod
+    def from_delta_v_vec(cls, delta_v_vec, orbit, t_clock, name="Maneuver", orbit_name="Orbit", position_name="Maneuver position"):
+        """
+        Initialize a maneuver from delta-v vector and theta.
+        """
+        RTN = orbit.convert_cartesian_to_RTN(delta_v_vec, t_clock, frame="bodycentric")
+        return cls(RTN, t_clock, name=name, mode="RTN", orbit_name=orbit_name, position_name=position_name)
+    
     @staticmethod
     def delta_v_for_phase_change(orbit, phase_change, theta_burn=0, n=1, oblateness_correction=True):
         """
         Calculate the delta-v for a phase change in an orbit.
         """
-        
-        
         v0 = orbit.v_at_theta(theta_burn)
         r = orbit.r_at_theta(theta_burn)
         t_clock_burn = orbit.t_clock_at_theta(theta_burn)
@@ -213,20 +237,26 @@ class Maneuver:
         if np.abs(np.arccos(np.dot(orbit_from.h_vec_bc, orbit_to.h_vec_bc)/(np.linalg.norm(orbit_from.h_vec_bc)*np.linalg.norm(orbit_to.h_vec_bc)))) > 1e-7:
             raise ValueError("Hohmann transfer requires coplanar orbits")
 
-        angle_between_periapsis = np.degrees(np.arctan2(np.linalg.norm(np.cross(orbit_from.e_vec_bc, orbit_to.e_vec_bc)), 
+        if orbit_to.e < 1e-7:
+            theta_arrival = theta_burn + 180
+            r1_vec, v1_vec = orbit_from.state_vectors_at_theta(theta_burn, frame="bodycentric")
+            r1 = np.linalg.norm(r1_vec)
+            r2 = orbit_to.r_at_theta(0)
+            r2_vec = orbit_from.state_vectors_at_theta(theta_arrival, frame="bodycentric")[0]/r1 * r2
+            v2_vec_peri = np.sqrt(orbit_to.mu/r2) * np.array([-np.sin(np.radians(theta_arrival)), np.cos(np.radians(theta_arrival)), 0])
+            v2_vec = orbit_from.Q_bc_peri_from_t_clock(0).T @ v2_vec_peri
+
+        else:
+            angle_between_periapsis = np.degrees(np.arctan2(np.linalg.norm(np.cross(orbit_from.e_vec_bc, orbit_to.e_vec_bc)), 
                                            np.dot(orbit_from.e_vec_bc, orbit_to.e_vec_bc)))
-        print(angle_between_periapsis)
-
-        theta_arrival = theta_burn + 180 - angle_between_periapsis
-
-        r1_vec, v1_vec = orbit_from.state_vectors_at_theta(theta_burn, frame="bodycentric")
-        r2_vec, v2_vec = orbit_to.state_vectors_at_theta(theta_arrival, frame="bodycentric")
-
-        r1 = np.linalg.norm(r1_vec)
-        r2 = np.linalg.norm(r2_vec)
+            theta_arrival = theta_burn + 180 - angle_between_periapsis
+            r1_vec, v1_vec = orbit_from.state_vectors_at_theta(theta_burn, frame="bodycentric")
+            r2_vec, v2_vec = orbit_to.state_vectors_at_theta(theta_arrival, frame="bodycentric")
+            r1 = np.linalg.norm(r1_vec)
+            r2 = np.linalg.norm(r2_vec)
 
         t_clock_burn = orbit_from.t_clock_at_theta(theta_burn)
-        transfer_orbit = Orbit.from_2_positions(orbit_from.main_body, r1, 0, r2, 180, i=orbit_from.i, Omega0=orbit_from.Omega0, omega0=theta_burn)
+        transfer_orbit = Orbit.from_2_positions(orbit_from.main_body, r1, 0, r2, 180, i=orbit_from.i, Omega0=orbit_from.Omega0, omega0=theta_burn+orbit_from.omega0)
 
         v_vec_transfer_from = transfer_orbit.state_vectors_at_theta(0, frame="bodycentric")[1]
         delta_v1_vec = v_vec_transfer_from - v1_vec
@@ -237,7 +267,6 @@ class Maneuver:
         delta_v2 = np.linalg.norm(delta_v2_vec)
         delta_v = delta_v1 + delta_v2
 
-        t_clock_burn = orbit_from.t_clock_at_theta(theta_burn)
         t_clock_arrival = t_clock_burn + transfer_orbit.T/2
 
         # convert the delta_v vectors to RTN components
@@ -249,3 +278,193 @@ class Maneuver:
         maneuver2 = Maneuver.from_RTN(RTN2, t_clock_arrival, name="Orbit insertion maneuver", orbit_name="Final orbit", position_name="Arrival position")
 
         return maneuver1, maneuver2, delta_v
+    
+    @classmethod
+    def bielliptic_transfer(cls, orbit_from, orbit_to, theta_burn=0, apoapsis=None):
+        """
+        Creates two maneuvers to perform a bielliptic transfer between two orbits.
+
+        Parameters
+        ----------
+        apoapsis : float, optional
+            The apoapsis of the transfer orbit
+        """
+        if apoapsis is None:
+            raise ValueError("Apoapsis must be specified for bielliptic transfer")
+        
+        if np.abs(np.arccos(np.dot(orbit_from.h_vec_bc, orbit_to.h_vec_bc)/(np.linalg.norm(orbit_from.h_vec_bc)*np.linalg.norm(orbit_to.h_vec_bc)))) > 1e-7:
+            raise ValueError("Bielliptic transfer requires coplanar orbits")
+
+        if orbit_to.e < 1e-7:
+            theta_arrival = theta_burn
+            r1_vec, v1_vec = orbit_from.state_vectors_at_theta(theta_burn, frame="bodycentric")
+            r1 = np.linalg.norm(r1_vec)
+            r3 = orbit_to.r_at_theta(0)
+            r3_vec = orbit_from.state_vectors_at_theta(theta_arrival, frame="bodycentric")[0]/r1 * r3
+            v3_vec_peri = np.sqrt(orbit_to.mu/r3) * np.array([-np.sin(np.radians(theta_arrival)), np.cos(np.radians(theta_arrival)), 0])
+            v3_vec = orbit_from.Q_bc_peri_from_t_clock(0).T @ v3_vec_peri
+
+        else:
+            angle_between_periapsis = np.degrees(np.arctan2(np.linalg.norm(np.cross(orbit_from.e_vec_bc, orbit_to.e_vec_bc)), 
+                                           np.dot(orbit_from.e_vec_bc, orbit_to.e_vec_bc)))
+            theta_arrival = theta_burn - angle_between_periapsis
+            r1_vec, v1_vec = orbit_from.state_vectors_at_theta(theta_burn, frame="bodycentric")
+            r3_vec, v3_vec = orbit_to.state_vectors_at_theta(theta_arrival, frame="bodycentric")
+            r1 = np.linalg.norm(r1_vec)
+            r3 = np.linalg.norm(r3_vec)
+
+        r2 = apoapsis
+        if r3/r1 < 11.94:
+            print("Warning: r3/r1 =", r3/r1, ".Bielliptic transfer is less efficient than hohmann transfer.")
+        
+        t_clock_burn = orbit_from.t_clock_at_theta(theta_burn)
+
+        transfer_orbit1 = Orbit.from_2_positions(orbit_from.main_body, r1, 0, r2, 180, i=orbit_from.i, Omega0=orbit_from.Omega0, omega0=theta_burn+orbit_from.omega0)
+        v_vec_transfer1_from = transfer_orbit1.state_vectors_at_theta(0, frame="bodycentric")[1]
+        delta_v1_vec = v_vec_transfer1_from - v1_vec
+        delta_v1 = np.linalg.norm(delta_v1_vec)
+
+        transfer_orbit2 = Orbit.from_2_positions(orbit_from.main_body, r2, 180, r3, 0, i=orbit_from.i, Omega0=orbit_from.Omega0, omega0=theta_burn+orbit_from.omega0)
+        v_vec_transfer1_apoapsis = transfer_orbit1.state_vectors_at_theta(180, frame="bodycentric")[1]
+        v_vec_transfer2_apoapsis = transfer_orbit2.state_vectors_at_theta(180, frame="bodycentric")[1]
+        delta_v2_vec = v_vec_transfer2_apoapsis - v_vec_transfer1_apoapsis
+        delta_v2 = np.linalg.norm(delta_v2_vec)
+       
+        v_vec_transfer2_to = transfer_orbit2.state_vectors_at_theta(0, frame="bodycentric")[1]
+        delta_v3_vec = v3_vec - v_vec_transfer2_to
+        delta_v3 = np.linalg.norm(delta_v3_vec)
+        
+        delta_v = delta_v1 + delta_v2 + delta_v3
+
+        t_clock_transfer_apoapsis = t_clock_burn + transfer_orbit1.T/2
+        t_clock_arrival = t_clock_transfer_apoapsis + transfer_orbit2.T/2
+
+        # convert the delta_v vectors to RTN components
+        RTN1 = transfer_orbit1.convert_cartesian_to_RTN(delta_v1_vec, -transfer_orbit1.T/2, frame="bodycentric")
+        RTN2 = transfer_orbit2.convert_cartesian_to_RTN(delta_v2_vec, -transfer_orbit2.T/2, frame="bodycentric")
+        RTN3 = transfer_orbit2.convert_cartesian_to_RTN(delta_v3_vec, 0, frame="bodycentric")
+
+        # create the maneuvers
+        maneuver1 = Maneuver.from_RTN(RTN1, t_clock_burn, name="Transfer maneuver1", orbit_name="Transfer orbit1", position_name="Transfer position")
+        maneuver2 = Maneuver.from_RTN(RTN2, t_clock_transfer_apoapsis, name="Transfer maneuver2", orbit_name="Transfer orbit2", position_name="Transfer position")
+        maneuver3 = Maneuver.from_RTN(RTN3, t_clock_arrival, name="Orbit insertion maneuver", orbit_name="Final orbit", position_name="Arrival position")
+
+        return maneuver1, maneuver2, maneuver3, delta_v
+    
+    @staticmethod
+    def find_orbit_intersections(orbit1, orbit2, tolerance=1e-3, num_initial_guesses=12):
+        """
+        Find the points where two orbits intersect using numerical optimization.
+
+        Parameters
+        ----------
+        orbit1 : Orbit
+            First orbit
+        orbit2 : Orbit
+            Second orbit
+        tolerance : float, optional
+            Tolerance to consider two points as equal (in km)
+        num_initial_guesses : int, optional
+            Number of initial points to search for intersections
+
+        Returns
+        -------
+        list
+            List of dictionaries containing thetas and positions of intersection points
+        """
+        from scipy.optimize import minimize
+        
+        def distance_function(x):
+            theta1, theta2 = x
+            r1 = orbit1.state_vectors_at_theta(theta1, frame="bodycentric")[0]
+            r2 = orbit2.state_vectors_at_theta(theta2, frame="bodycentric")[0]
+            return np.linalg.norm(r1 - r2)
+        
+        intersections = []
+        # Generate pairs of initial angles uniformly distributed
+        thetas1 = np.linspace(0, 360, num_initial_guesses)
+        thetas2 = np.linspace(0, 360, num_initial_guesses)
+        
+        for theta1 in thetas1:
+            for theta2 in thetas2:
+                # Optimization to find exact intersection point
+                result = minimize(
+                    distance_function,
+                    x0=[theta1, theta2],
+                    method='Nelder-Mead',
+                    options={'xatol': 1e-7}
+                )
+                
+                if result.fun < tolerance:
+                    theta1_opt, theta2_opt = result.x
+                    position = orbit1.state_vectors_at_theta(theta1_opt, frame="bodycentric")[0]
+                    
+                    # Check if this point was already found
+                    is_new = True
+                    for known in intersections:
+                        if np.linalg.norm(known['position'] - position) < tolerance:
+                            is_new = False
+                            break
+                    
+                    if is_new:
+                        intersections.append({
+                            'theta1': theta1_opt % 360,
+                            'theta2': theta2_opt % 360,
+                            'position': position
+                        })
+        
+        return intersections
+
+    @classmethod
+    def orbit_change_maneuver(cls, orbit_from, orbit_to, tolerance=1e-3, num_initial_guesses=12):
+        """
+        Creates a maneuver to change the orbit of a spacecraft.
+        The two orbits must intersect at least at one point.
+        The maneuver is performed at the intersection point that requires the least delta-v.
+
+        Parameters
+        ----------
+        orbit_from : Orbit
+            Initial orbit
+        orbit_to : Orbit
+            Final orbit
+
+        Returns
+        -------
+        Maneuver
+            Maneuver to change the orbit
+        """
+        intersections = cls.find_orbit_intersections(orbit_from, orbit_to, tolerance, num_initial_guesses)
+        
+        if not intersections:
+            raise ValueError("The orbits do not intersect within the specified tolerance")
+        
+        # Find the intersection point with the least delta-v
+        min_delta_v = float('inf')
+        best_maneuver = None
+        chosen_theta_burn = None
+        
+        for intersection in intersections:
+            theta_burn = intersection['theta1']
+            theta_arrival = intersection['theta2']
+            
+            v1_vec = orbit_from.state_vectors_at_theta(theta_burn, frame="bodycentric")[1]
+            v2_vec = orbit_to.state_vectors_at_theta(theta_arrival, frame="bodycentric")[1]
+            
+            delta_v_vec = v2_vec - v1_vec
+            delta_v = np.linalg.norm(delta_v_vec)
+            
+            if delta_v < min_delta_v:
+                min_delta_v = delta_v
+                chosen_theta_burn = theta_burn
+                t_clock_burn = orbit_from.t_clock_at_theta(theta_burn)
+                RTN = orbit_from.convert_cartesian_to_RTN(delta_v_vec, t_clock_burn, frame="bodycentric")
+                best_maneuver = cls.from_RTN(
+                    RTN, 
+                    t_clock_burn, 
+                    name="Change orbit maneuver",
+                    orbit_name="Final orbit",
+                    position_name="Intersection point"
+                )
+        return best_maneuver, chosen_theta_burn, min_delta_v
+        

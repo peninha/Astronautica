@@ -196,7 +196,7 @@ class Plotter:
             theta_n = orbit.theta_ascending_node()
             r_n = orbit.r_at_theta(theta_n)
             n_vec = n_vec/orbit.n * r_n
-        if orbit.e == 0:
+        if orbit.e < 1e-7:
             e_vec = [0, 0, 0]
         else:
             e_vec = e_vec/orbit.e * orbit.rp

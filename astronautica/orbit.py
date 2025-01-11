@@ -1162,7 +1162,8 @@ class Orbit:
             else:
                 return self.e * np.cosh(E) - 1
         
-        E = root_scalar(f, fprime=f_dot, x0=E0, args=(M), method='newton').root
+        result = root_scalar(f, fprime=f_dot, x0=E0, args=(M), method='newton', maxiter=1000)
+        E = result.root
 
         return np.degrees(E)
 
