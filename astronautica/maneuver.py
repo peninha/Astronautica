@@ -81,7 +81,7 @@ class Maneuver:
         return cls(RTN, t_clock, name=name, mode="RTN", orbit_name=orbit_name, position_name=position_name)
     
     @staticmethod
-    def delta_v_for_phase_change(orbit, phase_change, theta_burn=0, n=1, oblateness_correction=True):
+    def delta_v_for_phase_change(orbit, phase_change, theta_burn=0.0, n=1, oblateness_correction=True):
         """
         Calculate the delta-v for a phase change in an orbit.
         """
@@ -119,7 +119,7 @@ class Maneuver:
         return delta_v, -delta_v, T1
 
     @classmethod
-    def phase_maneuver(cls, orbit, phase_change, theta_burn=0, n=1, oblateness_correction=True):
+    def phase_maneuver(cls, orbit, phase_change, theta_burn=0.0, n=1, oblateness_correction=True):
         """
         Calculate the delta-v for a phase change in an orbit.
 
@@ -142,7 +142,7 @@ class Maneuver:
         return phase_maneuver1, phase_maneuver2
     
     @classmethod
-    def orbit_pos_to_orbit_pos_maneuver(cls, orbit_from, orbit_to, theta_burn=0, theta_arrival=0, bounds=None):
+    def orbit_pos_to_orbit_pos_maneuver(cls, orbit_from, orbit_to, theta_burn=0.0, theta_arrival=0.0, bounds=None):
         """
         Creates two maneuvers to perform a transfer between two orbits, at specific orbital positions.
         The maneuvers are such that have the least combined delta-v as possible.
@@ -230,7 +230,7 @@ class Maneuver:
         return maneuver1, maneuver2, delta_t, delta_v
             
     @classmethod
-    def hohmann_transfer(cls, orbit_from, orbit_to, theta_burn=0):
+    def hohmann_transfer(cls, orbit_from, orbit_to, theta_burn=0.0):
         """
         Creates two maneuvers to perform a hohmann transfer between two orbits.
         """
@@ -280,7 +280,7 @@ class Maneuver:
         return maneuver1, maneuver2, delta_v
     
     @classmethod
-    def bielliptic_transfer(cls, orbit_from, orbit_to, theta_burn=0, apoapsis=None):
+    def bielliptic_transfer(cls, orbit_from, orbit_to, theta_burn=0.0, apoapsis=None):
         """
         Creates two maneuvers to perform a bielliptic transfer between two orbits.
 
@@ -352,6 +352,66 @@ class Maneuver:
         return maneuver1, maneuver2, maneuver3, delta_v
     
     @staticmethod
+    def check_orbit_intersection(orbit_from, orbit_to, theta_burn=0.0, tolerance=1e-3, num_initial_guesses=12):
+        """
+        Check if there is an intersection between two orbits at a given theta_burn.
+
+        Parameters
+        ----------
+        orbit_from : Orbit
+            Initial orbit
+        orbit_to : Orbit
+            Final orbit
+        theta_burn : float
+            Angle theta at the initial orbit where the intersection is checked
+        tolerance : float, optional
+            Tolerance to consider two points as equal (in km)
+        num_initial_guesses : int, optional
+            Number of initial points to search for intersections
+
+        Returns
+        -------
+        tuple
+            (bool, float, float) - (exists_intersection, intersection_theta, delta_v)
+            If there is no intersection, returns (False, None, None)
+        """
+        from scipy.optimize import minimize
+
+        # Get the position vector at theta_burn
+        r_burn_vec = orbit_from.state_vectors_at_theta(theta_burn, frame="bodycentric")[0]
+
+        def distance_function(theta2):
+            r2_vec = orbit_to.state_vectors_at_theta(theta2[0], frame="bodycentric")[0]
+            return np.linalg.norm(r_burn_vec - r2_vec)
+        
+        # Try different initial points uniformly distributed
+        thetas2 = np.linspace(0, 360, num_initial_guesses)
+        min_distance = float('inf')
+        best_theta2 = None
+        
+        for theta2 in thetas2:
+            result = minimize(
+                distance_function,
+                x0=theta2,
+                method='Nelder-Mead',
+                options={'xatol': 1e-7}
+            )
+            
+            if result.fun < min_distance:
+                min_distance = result.fun
+                best_theta2 = result.x[0] % 360
+
+        # If an intersection is found within the tolerance
+        if min_distance < tolerance:
+            # Calculate the delta_v required
+            v1_vec = orbit_from.state_vectors_at_theta(theta_burn, frame="bodycentric")[1]
+            v2_vec = orbit_to.state_vectors_at_theta(best_theta2, frame="bodycentric")[1]
+            delta_v_vec = v2_vec - v1_vec
+            return True, best_theta2, delta_v_vec
+        
+        return False, None, None
+
+    @staticmethod
     def find_orbit_intersections(orbit1, orbit2, tolerance=1e-3, num_initial_guesses=12):
         """
         Find the points where two orbits intersect using numerical optimization.
@@ -416,7 +476,7 @@ class Maneuver:
         return intersections
 
     @classmethod
-    def orbit_change_maneuver(cls, orbit_from, orbit_to, tolerance=1e-3, num_initial_guesses=12):
+    def orbit_change_maneuver(cls, orbit_from, orbit_to, theta_burn=None, tolerance=1e-3, num_initial_guesses=12):
         """
         Creates a maneuver to change the orbit of a spacecraft.
         The two orbits must intersect at least at one point.
@@ -434,6 +494,18 @@ class Maneuver:
         Maneuver
             Maneuver to change the orbit
         """
+        if theta_burn is not None:
+            intersect, theta2, delta_v_vec = cls.check_orbit_intersection(orbit_from, orbit_to, theta_burn, tolerance, num_initial_guesses)
+            if not intersect:
+                raise ValueError("The orbits do not intersect within the specified tolerance")
+            else:
+                t_clock_burn = orbit_from.t_clock_at_theta(theta_burn)
+                RTN = orbit_from.convert_cartesian_to_RTN(delta_v_vec, t_clock_burn, frame="bodycentric")
+                maneuver = cls.from_RTN(RTN, t_clock_burn, name="Change orbit maneuver", orbit_name="Final orbit", position_name="Intersection point")
+                if delta_v_vec is not None:
+                    delta_v = np.linalg.norm(delta_v_vec)
+                return maneuver, theta_burn, delta_v
+        
         intersections = cls.find_orbit_intersections(orbit_from, orbit_to, tolerance, num_initial_guesses)
         
         if not intersections:

@@ -84,6 +84,7 @@ class Body:
         Calculate the gravitational parameter of the body.
         """
         return 398600
+        #return 4.0350323562548013E+05 # earth-moon system
         #return self.G * self.mass
 
     def geosynchronous_radius(self):
@@ -98,4 +99,18 @@ class Body:
         Calculate the geosynchronous altitude of the body.
         """
         return self.altitude(self.geosynchronous_radius())
+
+    def LOS_radius(self, h):
+        """
+        Calculate the radius of circle on the surface of the body which has line of sight to a point at a given altitude.
+        """
+        alpha = np.radians(self.LOS_angle(h))
+        return self.radius * alpha
+    
+    def LOS_angle(self, h):
+        """
+        Calculate the Line of Sight angle:
+        The angle from the center of the body to a point at a given altitude and the radius of the circle on the surface of the body which has line of sight to the point.
+        """
+        return np.degrees(np.arccos( 1 / (1 + h / self.radius) ))
 

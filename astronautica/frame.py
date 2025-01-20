@@ -61,7 +61,7 @@ class Frame:
         )
 
     @classmethod
-    def rotating_bodycentric(cls, main_body: Body):
+    def rotating_bodycentric(cls, main_body: Body, Omega0=0.0, t0_clock=0.0):
         """
         Creates a rotating bodycentric frame, from a Body object.
         """
@@ -72,13 +72,13 @@ class Frame:
             name="rotating_bodycentric",
             r0_vec_bc_frame=np.zeros(3),
             v_vec_bc_frame=np.zeros(3),
-            Omega0_bc_frame=0,
+            Omega0_bc_frame=Omega0,
             Omega_dot_bc_frame=main_body.rotation_speed,
             omega0_bc_frame=0,
             omega_dot_bc_frame=0,
             i0_bc_frame=0,
             i_dot_bc_frame=0,
-            t_clock_bc_frame=0
+            t_clock_bc_frame=t0_clock
         )
 
     ########### FRAMES TRANSFORMATION ###########

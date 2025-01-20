@@ -1227,6 +1227,29 @@ class Orbit:
         else:
             raise ValueError("Can't calculate true anomaly from eccentric anomaly for parabolic orbits.")
 
+    ###########   LAUNCH   ###########
+    @staticmethod
+    def launch_azimuth(latitude, inclination, to_north=True):
+        """
+        Calculates the launch azimuth from the latitude and inclination.
+        """
+        latitude = np.radians(latitude)
+        inclination = np.radians(inclination)
+        azimuth = np.degrees(np.arcsin(np.cos(inclination) / np.cos(latitude)))
+        if to_north:
+            return np.mod(azimuth, 360)
+        else:
+            return np.mod(180 - azimuth, 360)
+    
+    @staticmethod
+    def launch_inclination(latitude, azimuth):
+        """
+        Calculates the launch inclination from the latitude and azimuth.
+        """
+        latitude = np.radians(latitude)
+        azimuth = np.radians(azimuth)
+        inclination = np.arccos(np.cos(latitude) * np.sin(azimuth))
+        return np.degrees(inclination)
 
     ###########   CONVERSIONS   ###########
     @staticmethod

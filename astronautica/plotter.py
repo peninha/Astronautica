@@ -504,7 +504,8 @@ class Plotter:
         plt.get_current_fig_manager().window.showMaximized() # type: ignore
         plt.show()
 
-    def plot_groundtrack(self, trajectory, time_step=300, frame="rotating_bodycentric"):
+    @staticmethod
+    def plot_groundtrack(trajectory, groundstations=None, time_step=300, frame="rotating_bodycentric", earth_map=1, LOS=True):
         """
         Plots the groundtrack
         """
@@ -544,19 +545,50 @@ class Plotter:
 
         annotations = []  # List to store all annotations        
         
+        if earth_map:
+            try:
+                alpha = 1.0 if earth_map == 5 else 0.3
+                img = plt.imread(f"../images/earth_map{earth_map}.png")
+                ax_gt.imshow(img, extent=(-180.0, 180.0, -90.0, 90.0), aspect='auto', alpha=alpha)
+            except Exception as e:
+                print(f"Could not load Earth map: {e}")
+
+        if groundstations is not None:
+            for station in groundstations.stations:
+                station_name = station.get('name', 'Groundstation')
+                lat = station.get('latitude', 0.0)
+                lon = station.get('longitude', 0.0)
+                point_plot = ax_gt.plot(lon, lat, 'o', color='r',
+                                        picker=True, pickradius=5,
+                                        markersize=5, zorder=4, label=station_name)[0]
+                annotation = ax_gt.annotate(f'{station_name}',
+                    xy=(lon, lat), xytext=(10, 10),
+                    textcoords='offset points',
+                    bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5),
+                    arrowprops=dict(arrowstyle='->'),
+                    visible=False,
+                    zorder=10)
+                annotations.append((point_plot, annotation))
+
         for orbit_number in trajectory.orbits:
             orbit = trajectory.orbits[orbit_number]['orbit']
             t1_clock = trajectory.get_trajectory_position(orbit_number, position_index="last")['t_clock']
             t0_clock = trajectory.get_trajectory_position(orbit_number, position_index="first")['t_clock']
-            for position in trajectory.orbits[orbit_number]['trajectory_positions']:
+            for i, position in enumerate(trajectory.orbits[orbit_number]['trajectory_positions']):
                 r_vec = orbit.state_vectors_at_t_clock(position['t_clock'], frame=frame)[0]
                 ra, dec = frame.convert_cartesian_to_ra_dec(r_vec)
                 t_clock = position['t_clock']
                 t_norm = (t_clock - t0_clock) / (t1_clock - t0_clock)
-                color = self.color_gradient(t_norm)
+                color = Plotter.color_gradient(t_norm)
+                label = position.get('name', f'Position {i+1}')
+                label += f'({position["t_clock"]:.2f}s)'
                 point_plot = ax_gt.plot(ra, dec, 'o', color=color,
                                         picker=True, pickradius=5,
-                                        markersize=5, zorder=4)[0]
+                                        markersize=5, zorder=4, label=label)[0]
+                if LOS:
+                    r = np.linalg.norm(r_vec)
+                    LOS_angle = orbit.main_body.LOS_angle(orbit.main_body.altitude(r))
+                    ax_gt.add_patch(plt.Circle((ra, dec), LOS_angle, color=color, fill=True, alpha=0.2)) # type: ignore
                     
                 # Create annotation
                 annotation = ax_gt.annotate(f't = {t_clock:.2f}s',
@@ -586,18 +618,21 @@ class Plotter:
                 r_vec = orbit.state_vectors_at_t_clock(t, frame=frame)[0]
                 ra, dec = frame.convert_cartesian_to_ra_dec(r_vec)
                 t_norm = (t - t0_clock) / (t1_clock - t0_clock)
-                color = self.color_gradient(t_norm)
+                color = Plotter.color_gradient(t_norm)
                 ax_gt.plot(ra, dec, '.', color=color,
                         alpha=0.6, markersize=3, zorder=3)
 
         ax_gt.legend(bbox_to_anchor=(1.02, 1), loc='upper left')
-        ax_gt.set_xlabel('Right Ascension (°)')
-        ax_gt.set_ylabel('Declination (°)')
+        ax_gt.set_xlabel('Longitude (°)')
+        ax_gt.set_ylabel('Latitude (°)')
         ax_gt.set_xlim(-180, 180)
         ax_gt.set_ylim(-90, 90)
         ax_gt.grid(True)
+        ax_gt.set_xticks(np.arange(-180, 181, 15))
+        ax_gt.set_yticks(np.arange(-90, 91, 15))
         ax_gt.axhline(y=0, color='k', linestyle='-', linewidth=1)
         ax_gt.axvline(x=0, color='k', linestyle='-', linewidth=1)
+        ax_gt.set_aspect('equal', adjustable='box')
 
         # Add text for coordinates
         coord_text = ax_gt.text(0.02, 0.98, '', transform=ax_gt.transAxes, 
@@ -607,9 +642,9 @@ class Plotter:
         # Show coordinates on hover
         def update_coords(event):
             if event.inaxes == ax_gt:
-                ra = event.xdata
-                dec = event.ydata
-                coord_text.set_text(f'RA: {ra:.2f}°\nDec: {dec:.2f}°')
+                lon = event.xdata
+                lat = event.ydata
+                coord_text.set_text(f'Longitude: {lon:.2f}°\nLatitude: {lat:.2f}°')
                 plt.draw()
 
         plt.gcf().canvas.mpl_connect('motion_notify_event', update_coords)
@@ -777,142 +812,6 @@ class Plotter:
         self.ax.axis('equal')
         self.ax.grid(True)
         plt.title(f'Frame: {self.frame.name}')
-        plt.tight_layout()
-        plt.get_current_fig_manager().window.showMaximized() # type: ignore
-        plt.show()
-
-    def plot_groundtracks(self, trajectories, time_step=300, frame="rotating_bodycentric"):
-        """
-        Plots the groundtrack for multiple trajectories
-
-        :param trajectories: List of Trajectory objects or single Trajectory object
-        :param time_step: Time step for continuous line
-        :param frame: Reference frame to use ('perifocal', 'perifocal_t0', 'bodycentric', 'rotating_bodycentric' or Frame object)
-        """
-        # Convert single trajectory to list for uniform handling
-        if isinstance(trajectories, Trajectory):
-            trajectories = [trajectories]
-        
-        # Validate trajectories
-        if not all(isinstance(traj, Trajectory) for traj in trajectories):
-            raise ValueError("All trajectories must be instances of the Trajectory class")
-
-        # Use first orbit of first trajectory to define frame
-        orbit0 = trajectories[0].orbits[0]['orbit']
-        if isinstance(frame, str):
-            if frame == "perifocal":
-                frame = Frame(name="perifocal",
-                              Omega0_bc_frame=orbit0.Omega0,
-                              Omega_dot_bc_frame=orbit0.Omega_dot,
-                              omega0_bc_frame=orbit0.omega0,
-                              omega_dot_bc_frame=orbit0.omega_dot,
-                              i0_bc_frame=orbit0.i,
-                              t_clock_bc_frame=orbit0.t0_clock)
-            elif frame == "perifocal_t0":
-                frame = Frame(name="perifocal_t0",
-                              Omega0_bc_frame=orbit0.Omega0,
-                              Omega_dot_bc_frame=0,
-                              omega0_bc_frame=orbit0.omega0,
-                              omega_dot_bc_frame=0,
-                              i0_bc_frame=orbit0.i,
-                              t_clock_bc_frame=orbit0.t0_clock)
-            elif frame == "bodycentric":
-                frame = Frame.bodycentric()
-            elif frame == "rotating_bodycentric":
-                frame = Frame.rotating_bodycentric(orbit0.main_body)
-            else:
-                raise ValueError("Invalid frame name. Please use 'perifocal', 'perifocal_t0', 'bodycentric', 'rotating_bodycentric' or a custom Frame object.")
-        if not isinstance(frame, Frame):
-            raise ValueError("The 'frame' parameter must be an instance of the Frame class")
-        
-        fig_gt = plt.figure(figsize=(16, 9))
-        ax_gt = fig_gt.add_subplot()
-
-        annotations = []  # List to store all annotations        
-        
-        # Different colors for each trajectory
-        trajectory_colors = [(0.0, 0.0, 1.0, 1),
-                             (1.0, 0.8, 0.0, 1),
-                             (0.5, 0.0, 0.8, 1),
-                             (1.0, 0.0, 0.0, 1),
-                             (0.5, 0.5, 0.5, 1)]
-        
-        # Plot each trajectory
-        for traj_idx, trajectory in enumerate(trajectories):
-            for orbit_number in trajectory.orbits:
-                orbit = trajectory.orbits[orbit_number]['orbit']
-                t1_clock = trajectory.get_trajectory_position(orbit_number, position_index="last")['t_clock']
-                t0_clock = trajectory.get_trajectory_position(orbit_number, position_index="first")['t_clock']
-                
-                # Plot trajectory points
-                for position in trajectory.orbits[orbit_number]['trajectory_positions']:
-                    r_vec = orbit.state_vectors_at_t_clock(position['t_clock'], frame=frame)[0]
-                    ra, dec = frame.convert_cartesian_to_ra_dec(r_vec)
-                    t_clock = position['t_clock']
-                    t_norm = (t_clock - t0_clock) / (t1_clock - t0_clock)
-                    point_color = self.color_gradient(t_norm, colors=[trajectory_colors[traj_idx], (0,0,0,0.5)])
-                    point_plot = ax_gt.plot(ra, dec, 'o', color=point_color,
-                                            picker=True, pickradius=5,
-                                            markersize=5, zorder=4,
-                                            label=f'Trajectory {traj_idx+1} - Orbit {orbit_number}')[0]
-                        
-                    # Create annotation
-                    annotation = ax_gt.annotate(f't = {t_clock:.2f}s',
-                        xy=(ra, dec), xytext=(10, 10),
-                        textcoords='offset points',
-                        bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5),
-                        arrowprops=dict(arrowstyle='->'),
-                        visible=False,
-                        zorder=10)
-                    
-                    annotations.append((point_plot, annotation))
-                
-                # Plot continuous line
-                samples = int((t1_clock - t0_clock)/time_step)
-                times = np.linspace(t0_clock, t1_clock, samples)
-                for t in times:
-                    r_vec = orbit.state_vectors_at_t_clock(t, frame=frame)[0]
-                    ra, dec = frame.convert_cartesian_to_ra_dec(r_vec)
-                    t_norm = (t - t0_clock) / (t1_clock - t0_clock)
-                    point_color = self.color_gradient(t_norm, colors=[trajectory_colors[traj_idx], (0,0,0,0.5)])
-                    ax_gt.plot(ra, dec, '.', color=point_color,
-                            alpha=0.6, markersize=3, zorder=3)
-
-        # Hover function that manages all annotations
-        def hover(event):
-            if event.inaxes == plt.gca():
-                for point_plot, annotation in annotations:
-                    cont, _ = point_plot.contains(event)
-                    annotation.set_visible(cont)
-                plt.draw()
-        
-        fig_gt.canvas.mpl_connect('motion_notify_event', hover)
-
-        ax_gt.legend(bbox_to_anchor=(1.02, 1), loc='upper left')
-        ax_gt.set_xlabel('Right Ascension (°)')
-        ax_gt.set_ylabel('Declination (°)')
-        ax_gt.set_xlim(-180, 180)
-        ax_gt.set_ylim(-90, 90)
-        ax_gt.grid(True)
-        ax_gt.axhline(y=0, color='k', linestyle='-', linewidth=1)
-        ax_gt.axvline(x=0, color='k', linestyle='-', linewidth=1)
-
-        # Add text for coordinates
-        coord_text = ax_gt.text(0.02, 0.98, '', transform=ax_gt.transAxes, 
-                            bbox=dict(facecolor='white', alpha=0.7),
-                            verticalalignment='top')
-
-        # Show coordinates on hover
-        def update_coords(event):
-            if event.inaxes == ax_gt:
-                ra = event.xdata
-                dec = event.ydata
-                coord_text.set_text(f'RA: {ra:.2f}°\nDec: {dec:.2f}°')
-                plt.draw()
-
-        plt.gcf().canvas.mpl_connect('motion_notify_event', update_coords)
-
-        plt.title('Groundtrack')
         plt.tight_layout()
         plt.get_current_fig_manager().window.showMaximized() # type: ignore
         plt.show()
