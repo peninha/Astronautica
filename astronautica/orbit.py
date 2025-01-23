@@ -1318,6 +1318,18 @@ class Orbit:
         RTN = np.array([RPN[0] + RPN[1]*np.sin(gamma), RPN[1] * np.cos(gamma), RPN[2]])
         return RTN
 
+    def convert_RTN_to_RPN(self, RTN, t_clock):
+        """
+        Converts the RTN vectors to the RPN frame.
+        """
+        theta = self.theta_at_t_clock(t_clock)
+        gamma = np.radians(self.gamma_at_theta(theta))
+        R, T, N = RTN
+        R_prime = R - T * np.tan(gamma)
+        P_prime = T / np.cos(gamma)
+        N_prime = N
+        return np.array([R_prime, P_prime, N_prime])
+
     ###########   Stumpff functions   ###########
     @staticmethod
     def S(z):

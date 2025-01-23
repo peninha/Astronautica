@@ -484,7 +484,10 @@ class Plotter:
                     h_arrow = False
                     e_arrow = False
                     n_arrow = False
-                self.draw_orbit(orbit, t_clock_bc=orbit.t0_clock, groundtrack=groundtrack, h_arrow=h_arrow, e_arrow=e_arrow, n_arrow=n_arrow, style="dashed", color=colors[orbit_number%len(colors)], label=f"{orbit_number} - {orbit.name}")
+                self.draw_orbit(orbit, t_clock_bc=orbit.t0_clock, groundtrack=groundtrack,
+                                h_arrow=h_arrow, e_arrow=e_arrow, n_arrow=n_arrow, style="dashed",
+                                color=colors[orbit_number%len(colors)],
+                                label=f"{orbit_number} - {orbit.name}")
             if points:
                 self.draw_points(orbit)
             self.draw_trajectory(orbit_number, time_step=time_step, positions=positions, velocities=velocities, groundtrack=groundtrack, color=colors[orbit_number%len(colors)], v_scale=v_scale)
@@ -721,7 +724,7 @@ class Plotter:
         plt.get_current_fig_manager().window.showMaximized() # type: ignore
         plt.show()
 
-    def plot_trajectories(self, trajectories, time_step=300, frame="bodycentric", orbits=True, points=True, positions=True, velocities=True, maneuvers=True, groundtrack=False, v_scale=1):
+    def plot_trajectories(self, trajectories, time_step=300, frame="bodycentric", orbits=True, orbit_arrows=False, points=True, positions=True, velocities=True, maneuvers=True, groundtrack=False, v_scale=1):
         """
         Plots a single or multiple trajectories
         
@@ -792,10 +795,18 @@ class Plotter:
                 orbit_color = self.color_gradient(orbit_norm, colors=[trajectory_colors[traj_idx], self.lighten(trajectory_colors[traj_idx], 0.7)])
                 orbit = trajectory.orbits[orbit_number]['orbit']
                 if orbits:
+                    if orbit_arrows:
+                        h_arrow = True
+                        e_arrow = True
+                        n_arrow = True
+                    else:
+                        h_arrow = False
+                        e_arrow = False
+                        n_arrow = False
                     self.draw_orbit(orbit, t_clock_bc=orbit.t0_clock, groundtrack=groundtrack, 
-                                  h_arrow=False, e_arrow=True, n_arrow=True, style="dashed", 
-                                  color=orbit_color, 
-                                  label=f"Trajectory {traj_idx+1} - Orbit {orbit_number}")
+                                    h_arrow=h_arrow, e_arrow=e_arrow, n_arrow=n_arrow, style="dashed", 
+                                    color=orbit_color, 
+                                    label=f"Trajectory {traj_idx+1} - Orbit {orbit_number}")
                 if points:
                     self.draw_points(orbit)
                 self.draw_trajectory(orbit_number, traj_idx=traj_idx, time_step=time_step, velocities=velocities, 

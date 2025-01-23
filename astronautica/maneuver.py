@@ -1,5 +1,8 @@
+from aiohttp import ClientSession
 from .orbit import Orbit
 import numpy as np
+from scipy.optimize import minimize_scalar, minimize, root_scalar
+import math
 
 class Maneuver:
     """
@@ -141,8 +144,8 @@ class Maneuver:
         phase_maneuver2 = cls.from_RPN([0, delta_v2, 0], orbit.t_clock_at_theta(theta_burn) + T1*n, name="Phase Maneuver 2", orbit_name="Final orbit", position_name="Arrival position")
         return phase_maneuver1, phase_maneuver2
     
-    @classmethod
-    def orbit_pos_to_orbit_pos_maneuver(cls, orbit_from, orbit_to, theta_burn=0.0, theta_arrival=0.0, bounds=None):
+    @staticmethod
+    def orbit_pos_to_orbit_pos_maneuver(orbit_from, orbit_to, theta_burn=0.0, theta_arrival=0.0, bounds=None, max_iter=1000, tol=1e-6):
         """
         Creates two maneuvers to perform a transfer between two orbits, at specific orbital positions.
         The maneuvers are such that have the least combined delta-v as possible.
@@ -160,8 +163,6 @@ class Maneuver:
         bounds : tuple, optional
             The bounds to perform the optimization over
         """
-        from scipy.optimize import minimize_scalar
-
         t_clock_burn = orbit_from.t_clock_at_theta(theta_burn)
         r1_vec, v1_vec = orbit_from.state_vectors_at_theta(theta_burn, frame="bodycentric")
         r2_vec, v2_vec = orbit_to.state_vectors_at_theta(theta_arrival, frame="bodycentric")
@@ -197,7 +198,8 @@ class Maneuver:
         result = minimize_scalar(
             objective,
             bounds=bounds,
-            method='bounded'
+            method='bounded',
+            options={'xatol': tol, 'maxiter': max_iter}
         )
 
         if not result.success:
@@ -229,8 +231,8 @@ class Maneuver:
 
         return maneuver1, maneuver2, delta_t, delta_v
             
-    @classmethod
-    def hohmann_transfer(cls, orbit_from, orbit_to, theta_burn=0.0):
+    @staticmethod
+    def hohmann_transfer(orbit_from, orbit_to, theta_burn=0.0):
         """
         Creates two maneuvers to perform a hohmann transfer between two orbits.
         """
@@ -279,8 +281,8 @@ class Maneuver:
 
         return maneuver1, maneuver2, delta_v
     
-    @classmethod
-    def bielliptic_transfer(cls, orbit_from, orbit_to, theta_burn=0.0, apoapsis=None):
+    @staticmethod
+    def bielliptic_transfer(orbit_from, orbit_to, theta_burn=0.0, apoapsis=None):
         """
         Creates two maneuvers to perform a bielliptic transfer between two orbits.
 
@@ -352,7 +354,7 @@ class Maneuver:
         return maneuver1, maneuver2, maneuver3, delta_v
     
     @staticmethod
-    def check_orbit_intersection(orbit_from, orbit_to, theta_burn=0.0, tolerance=1e-3, num_initial_guesses=12):
+    def check_orbit_intersection(orbit_from, orbit_to, theta_burn=0.0, tol=1e-3, num_initial_guesses=12):
         """
         Check if there is an intersection between two orbits at a given theta_burn.
 
@@ -364,18 +366,17 @@ class Maneuver:
             Final orbit
         theta_burn : float
             Angle theta at the initial orbit where the intersection is checked
-        tolerance : float, optional
-            Tolerance to consider two points as equal (in km)
+        tol : float, optional
+            Tolerance to consider two points as a intersection (in km)
         num_initial_guesses : int, optional
             Number of initial points to search for intersections
 
         Returns
         -------
         tuple
-            (bool, float, float) - (exists_intersection, intersection_theta, delta_v)
+            (bool, float, np.array) - (exists_intersection, intersection_theta, delta_v_vec)
             If there is no intersection, returns (False, None, None)
         """
-        from scipy.optimize import minimize
 
         # Get the position vector at theta_burn
         r_burn_vec = orbit_from.state_vectors_at_theta(theta_burn, frame="bodycentric")[0]
@@ -402,7 +403,7 @@ class Maneuver:
                 best_theta2 = result.x[0] % 360
 
         # If an intersection is found within the tolerance
-        if min_distance < tolerance:
+        if min_distance < tol:
             # Calculate the delta_v required
             v1_vec = orbit_from.state_vectors_at_theta(theta_burn, frame="bodycentric")[1]
             v2_vec = orbit_to.state_vectors_at_theta(best_theta2, frame="bodycentric")[1]
@@ -412,7 +413,7 @@ class Maneuver:
         return False, None, None
 
     @staticmethod
-    def find_orbit_intersections(orbit1, orbit2, tolerance=1e-3, num_initial_guesses=12):
+    def find_orbit_intersections(orbit1, orbit2, tol=1e-3, num_initial_guesses=12):
         """
         Find the points where two orbits intersect using numerical optimization.
 
@@ -422,8 +423,8 @@ class Maneuver:
             First orbit
         orbit2 : Orbit
             Second orbit
-        tolerance : float, optional
-            Tolerance to consider two points as equal (in km)
+        tol : float, optional
+            Tolerance to consider two points as a intersection (in km)
         num_initial_guesses : int, optional
             Number of initial points to search for intersections
 
@@ -432,8 +433,6 @@ class Maneuver:
         list
             List of dictionaries containing thetas and positions of intersection points
         """
-        from scipy.optimize import minimize
-        
         def distance_function(x):
             theta1, theta2 = x
             r1 = orbit1.state_vectors_at_theta(theta1, frame="bodycentric")[0]
@@ -455,14 +454,14 @@ class Maneuver:
                     options={'xatol': 1e-7}
                 )
                 
-                if result.fun < tolerance:
+                if result.fun < tol:
                     theta1_opt, theta2_opt = result.x
                     position = orbit1.state_vectors_at_theta(theta1_opt, frame="bodycentric")[0]
                     
                     # Check if this point was already found
                     is_new = True
                     for known in intersections:
-                        if np.linalg.norm(known['position'] - position) < tolerance:
+                        if np.linalg.norm(known['position'] - position) < tol:
                             is_new = False
                             break
                     
@@ -476,7 +475,42 @@ class Maneuver:
         return intersections
 
     @classmethod
-    def orbit_change_maneuver(cls, orbit_from, orbit_to, theta_burn=None, tolerance=1e-3, num_initial_guesses=12):
+    def orbit_change_maneuver_at_theta(cls, orbit_from, orbit_to, theta_burn, tol=1e-3, num_initial_guesses=12):
+        """
+        Creates a maneuver to change the orbit of a spacecraft at a given theta_burn relative to orbit_from.
+        This theta_burn must be an intersection point between the two orbits.
+
+        Parameters
+        ----------
+        orbit_from : Orbit
+            Initial orbit
+        orbit_to : Orbit
+            Final orbit
+        theta_burn : float
+            The theta_burn at which the maneuver is performed
+        tol : float, optional
+            Tolerance to consider two points as a intersection (in km)
+        num_initial_guesses : int, optional
+            Number of initial points to search for intersections
+
+        Returns
+        -------
+        tuple
+            (maneuver, theta_burn, delta_v)
+        """
+        
+        intersect, _ , delta_v_vec = cls.check_orbit_intersection(orbit_from, orbit_to, theta_burn, tol, num_initial_guesses)
+        if not intersect:
+            raise ValueError("The orbits do not intersect within the specified tolerance")
+        
+        t_clock_burn = orbit_from.t_clock_at_theta(theta_burn)
+        RTN = orbit_from.convert_cartesian_to_RTN(delta_v_vec, t_clock_burn, frame="bodycentric")
+        maneuver = cls.from_RTN(RTN, t_clock_burn, name="Change orbit maneuver", orbit_name="Final orbit", position_name="Intersection point")
+        delta_v = float(np.linalg.norm(delta_v_vec)) # type: ignore
+        return maneuver, theta_burn, delta_v
+
+    @classmethod
+    def orbit_change_maneuver(cls, orbit_from, orbit_to, tol=1e-3, num_initial_guesses=12):
         """
         Creates a maneuver to change the orbit of a spacecraft.
         The two orbits must intersect at least at one point.
@@ -491,22 +525,10 @@ class Maneuver:
 
         Returns
         -------
-        Maneuver
-            Maneuver to change the orbit
+        tuple
+            (maneuver, theta_burn, delta_v)
         """
-        if theta_burn is not None:
-            intersect, theta2, delta_v_vec = cls.check_orbit_intersection(orbit_from, orbit_to, theta_burn, tolerance, num_initial_guesses)
-            if not intersect:
-                raise ValueError("The orbits do not intersect within the specified tolerance")
-            else:
-                t_clock_burn = orbit_from.t_clock_at_theta(theta_burn)
-                RTN = orbit_from.convert_cartesian_to_RTN(delta_v_vec, t_clock_burn, frame="bodycentric")
-                maneuver = cls.from_RTN(RTN, t_clock_burn, name="Change orbit maneuver", orbit_name="Final orbit", position_name="Intersection point")
-                if delta_v_vec is not None:
-                    delta_v = np.linalg.norm(delta_v_vec)
-                return maneuver, theta_burn, delta_v
-        
-        intersections = cls.find_orbit_intersections(orbit_from, orbit_to, tolerance, num_initial_guesses)
+        intersections = cls.find_orbit_intersections(orbit_from, orbit_to, tol, num_initial_guesses)
         
         if not intersections:
             raise ValueError("The orbits do not intersect within the specified tolerance")
@@ -539,4 +561,172 @@ class Maneuver:
                     position_name="Intersection point"
                 )
         return best_maneuver, chosen_theta_burn, min_delta_v
+    
+    @classmethod
+    def impact_maneuver_from_t_clock_burn(cls, orbit_from, orbit_to, delta_v_target, delta_t_guess, delta_t_min, delta_t_max, t_clock_burn=0, tol=1e-6, max_iter=1000):
+        """
+        Finds a maneuver, consuming the whole given delta-v, to impact the target.
+        This functions iterates over delta_t to find the maneuver which spend the given delta_v_target.
+
+        Parameters
+        ----------
+        delta_v_target : float
+            Target delta-v for the maneuver
+        delta_t_guess : float
+            Initial guess for the delta-t
+        delta_t_min : float
+            Minimum delta-t for the maneuver
+        delta_t_max : float
+            Maximum delta-t for the maneuver
+        t_clock_burn : float, optional
+            t_clock at which the maneuver is performed
+        tol : float, optional
+            Tolerance for the optimization
+        max_iter : int, optional
+            Maximum number of iterations for the optimization
+        """
+        def objective(delta_t):
+            t_clock_impact = t_clock_burn + delta_t
+            r_vec_from = orbit_from.state_vectors_at_t_clock(t_clock_burn)[0]
+            r_vec_impact = orbit_to.state_vectors_at_t_clock(t_clock_impact)[0]
+            impact_orbit = Orbit.from_2_vectors_and_delta_time(orbit_from.main_body, r_vec_from, r_vec_impact, delta_t, t0_clock=t_clock_impact)
+            delta_v = cls.delta_v_from_v_vecs(orbit_from.state_vectors_at_t_clock(t_clock_burn)[1], impact_orbit.state_vectors_at_t_clock(t_clock_burn)[1])
+            return delta_v - delta_v_target
+
+        result = root_scalar(objective,
+                            bracket=[delta_t_min, delta_t_max],
+                            x0=delta_t_guess,
+                            method='brentq',
+                            options={'xtol': tol, 'maxiter': max_iter})
+
+        if result.converged:
+            delta_t_opt = result.root
+        else:
+            raise RuntimeError("Failed to find a solution")
+
+        t_clock_impact = t_clock_burn + delta_t_opt
+        r_vec_from = orbit_from.state_vectors_at_t_clock(t_clock_burn)[0]
+        r_vec_impact = orbit_to.state_vectors_at_t_clock(t_clock_impact)[0]
+        impact_orbit = Orbit.from_2_vectors_and_delta_time(orbit_from.main_body, r_vec_from, r_vec_impact, delta_t_opt, t0_clock=t_clock_impact)
+
+        theta_burn = orbit_from.theta_at_t_clock(t_clock_burn)
+        maneuver, _ , delta_v = cls.orbit_change_maneuver_at_theta(orbit_from, impact_orbit, theta_burn)
+        return maneuver, delta_t_opt, delta_v
+
+    @classmethod
+    def impact_maneuver(cls, orbit_from, orbit_to, theta_rel, delta_v_target, delta_t_guess, delta_t_min, delta_t_max, from_t_clock=300, tol=1e-6, max_iter=1000):
+        """
+        Finds a maneuver using a given delta-v to impact the target.
+
+        Parameters
+        ----------
+        theta_rel : float
+            Relative angle between the two orbits. Positive if orbit_to is ahead, negative if behind.
+        delta_v_target : float
+            Target delta-v for the maneuver
+        delta_t_min : float
+            Minimum delta-t for the maneuver
+        delta_t_max : float
+            Maximum delta-t for the maneuver
+        from_t_clock : float, optional
+            t_clock from which the theta_rel is searched, to allow time for maneuver preparation. Default is 300 seconds (5 minutes).
+        tolerance : float, optional
+            Tolerance for the optimization
+        max_iterations : int, optional
+            Maximum number of iterations for the optimization
+        """
+        t_clock_burn = cls.find_t_clock_for_relative_theta(orbit_from, orbit_to, theta_rel, from_t_clock=from_t_clock)
+        maneuver, delta_t_opt, delta_v = cls.impact_maneuver_from_t_clock_burn(orbit_from, orbit_to, delta_v_target, delta_t_guess, delta_t_min, delta_t_max, t_clock_burn=t_clock_burn, tol=tol, max_iter=max_iter)
+        return {
+            "maneuver": maneuver,
+            "t_clock_burn": t_clock_burn,
+            "delta_t": delta_t_opt,
+            "delta_v": delta_v
+        }
+
+    @staticmethod
+    def relative_periapsis_argument(orbit_from, orbit_to):
+        """
+        Finds the relative periapsis argument between two coplanar (or nearly coplanar) orbits.
+        """
+        r_vec_from = orbit_from.state_vectors_at_theta(0, frame="bodycentric")[0]
+        r_vec_to = orbit_to.state_vectors_at_theta(0, frame="bodycentric")[0]
+        r_from = np.linalg.norm(r_vec_from)
+        r_to = np.linalg.norm(r_vec_to)
+        omega_rel = np.degrees(np.arccos(np.dot(r_vec_from, r_vec_to)/(r_from*r_to)))
+        if np.dot(np.cross(r_vec_from, r_vec_to), orbit_from.h_vec_bc) < 0:
+            omega_rel *= -1
+        return omega_rel
+    
+    @classmethod
+    def relative_theta0(cls, orbit_from, orbit_to):
+        """
+        Finds the relative theta0 between two coplanar (or nearly coplanar) orbits.
+        """
+        omega_rel = cls.relative_periapsis_argument(orbit_from, orbit_to)
+        theta0_rel = orbit_to.theta0 - orbit_from.theta0 + omega_rel
+        return theta0_rel
+    
+    @classmethod
+    def relative_theta_at_t_clock(cls, orbit_from, orbit_to, t_clock):
+        """
+        Finds the relative theta at a given time between two coplanar (or nearly coplanar) orbits.
+        """
+        omega_rel = cls.relative_periapsis_argument(orbit_from, orbit_to)
+        theta_rel = orbit_to.theta_at_t_clock(t_clock) - orbit_from.theta_at_t_clock(t_clock) + omega_rel
+        # Normalize between -180 and +180
+        theta_rel = ((theta_rel + 180) % 360) - 180
+        return theta_rel
+
+    @classmethod
+    def relative_theta_loop_period(cls, orbit_from, orbit_to, from_t_clock=0, max_iter=1000, tol=1e-6):
+        """
+        Finds the period of the relative theta loop between two coplanar (or nearly coplanar) orbits.
+        """
+        theta_rel0 = cls.relative_theta_at_t_clock(orbit_from, orbit_to, from_t_clock)
+
+        def objective(t_clock):
+            theta_rel = cls.relative_theta_at_t_clock(orbit_from, orbit_to, t_clock)
+            diff = ((theta_rel - theta_rel0 + 180) % 360) - 180
+            return abs(diff)
         
+        guess = from_t_clock + abs(orbit_from.T * orbit_to.T / (orbit_to.T - orbit_from.T))
+        result = minimize_scalar(
+            objective,
+            bracket=(guess - orbit_from.T/2, guess, guess + orbit_from.T/2),
+            method='brent',
+            options={'xtol': tol, 'maxiter': max_iter}
+        )
+        if result.success:
+            return result.x
+        else:
+            raise RuntimeError(f"Failed to find a solution that satisfies the desired relative angle. Best difference found: {result.fun} degrees")
+
+    @classmethod
+    def find_t_clock_for_relative_theta(cls, orbit_from, orbit_to, theta_rel, from_t_clock=0, max_iter=1000, tol=1e-6):
+        """
+        Finds the least time t_clock for which the relative theta between two orbits is equal to theta_rel.
+        Theta_rel is the relative angle of the orbit_to with respect to the orbit_from, positive if ahead, negative if behind.
+        """
+        def objective(t_clock):
+            theta_rel_calc = cls.relative_theta_at_t_clock(orbit_from, orbit_to, t_clock)
+            diff = ((theta_rel_calc - theta_rel + 180) % 360) - 180
+            return abs(diff)
+
+        loop_period = cls.relative_theta_loop_period(orbit_from, orbit_to, from_t_clock)
+        
+        result = minimize_scalar(
+            objective,
+            bounds=(from_t_clock, from_t_clock + loop_period),
+            method='bounded',
+            options={'xatol': tol, 'maxiter': max_iter}
+        )
+        
+        if result.success:
+            return result.x
+        else:
+            raise RuntimeError(f"Failed to find a solution that satisfies the desired relative angle. Best difference found: {result.fun} degrees")
+        
+    @staticmethod
+    def delta_v_from_v_vecs(v_vec_from, v_vec_to):
+        return np.linalg.norm(v_vec_to - v_vec_from)
