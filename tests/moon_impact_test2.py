@@ -41,8 +41,8 @@ for i in range(24):
 
 e1 = 0
 rp1 = earth.radius_from_altitude(250)
-i1 = moon_orbit.i -1
-Omega01 = moon_orbit.Omega0
+i1 = moon_orbit.i - 0
+Omega01 = moon_orbit.Omega0 + 0
 omega01 = 0
 theta01 = 0
 t0_clock1 = 0
@@ -100,9 +100,9 @@ traj2.add_trajectory_position(0, t_clock=t_clock_burn, name="Moon at burn")
 traj2.add_trajectory_position(0, t_clock=t_clock_impact, name="Moon at impact")
 
 plotter = Plotter(plot3d=True)
-plotter.plot_trajectories([traj1, traj2], frame="bodycentric",
+plotter.plot_trajectories([traj1, traj2], frame="perifocal",
                            time_step=600,
-                           orbits=False)
+                           orbits=True)
 
 
 v_impact_vec_ship = traj1.orbits[1]['orbit'].state_vectors_at_t_clock(t_clock_impact, frame="bodycentric")[1]

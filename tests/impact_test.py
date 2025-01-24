@@ -15,8 +15,8 @@ moon_orbit = Orbit.from_elements(earth, rp=rp, ra=ra, Omega0=Omega0, i=i, omega0
 
 e1 = 0
 rp1 = earth.radius_from_altitude(250)
-i1 = moon_orbit.i
-Omega01 = moon_orbit.Omega0
+i1 = moon_orbit.i - 0
+Omega01 = moon_orbit.Omega0 + 0
 omega01 = 0
 theta01 = 0
 t0_clock1 = 0
@@ -30,7 +30,7 @@ print(f"t_clock_burn = {t_clock_burn} s")
 ########################
 # delta_v_target = 1.5 #
 ########################
-delta_t = 3500
+delta_t = 3900
 t_clock_impact = t_clock_burn + delta_t
 
 r_vec_from, v_vec_from = parking_orbit.state_vectors_at_t_clock(t_clock_burn)
@@ -52,9 +52,10 @@ traj2 = Trajectory(moon_orbit, orbit_name="Moon orbit", position_name="Moon init
 traj2.add_trajectory_position(0, t_clock=t_clock_burn, name="Moon at burn")
 traj2.add_trajectory_position(0, t_clock=t_clock_impact, name="Moon at impact")
 
-plotter = Plotter(plot3d=False)
+plotter = Plotter(plot3d=True)
 plotter.plot_trajectories([traj1, traj2], frame="perifocal",
                            time_step=60,
-                           orbits=False)
+                           orbits=False,
+                           orbit_arrows=True)
 
 

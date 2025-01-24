@@ -586,17 +586,19 @@ class Maneuver:
             Maximum number of iterations for the optimization
         """
         def objective(delta_t):
+            if isinstance(delta_t, (list, np.ndarray)):
+                delta_t = delta_t[0]
             t_clock_impact = t_clock_burn + delta_t
             r_vec_from = orbit_from.state_vectors_at_t_clock(t_clock_burn)[0]
             r_vec_impact = orbit_to.state_vectors_at_t_clock(t_clock_impact)[0]
-            impact_orbit = Orbit.from_2_vectors_and_delta_time(orbit_from.main_body, r_vec_from, r_vec_impact, delta_t, t0_clock=t_clock_impact)
+            impact_orbit = Orbit.from_2_vectors_and_delta_time(orbit_from.main_body, r_vec_from, r_vec_impact, delta_t, t0_clock=t_clock_impact, max_iter=max_iter, tol=tol)
             delta_v = cls.delta_v_from_v_vecs(orbit_from.state_vectors_at_t_clock(t_clock_burn)[1], impact_orbit.state_vectors_at_t_clock(t_clock_burn)[1])
             return delta_v - delta_v_target
 
         result = root_scalar(objective,
                             bracket=[delta_t_min, delta_t_max],
                             x0=delta_t_guess,
-                            method='brentq',
+                            method='newton',
                             options={'xtol': tol, 'maxiter': max_iter})
 
         if result.converged:
