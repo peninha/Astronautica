@@ -1,0 +1,26 @@
+--------------------------------------
+-  Tanajura 11 - Jacy 3
+--------------------------------------
+       Periapsis: 216.30249 km
+        Apoapsis: 223.22153 km
+    Eccentricity: 0.00052
+ Semi-major axis: 6590.76201 km
+     Inclination: 19.69912 °
+             LAN: 350.20951 °
+Argument of peri: 294.83397 °
+    True anomaly: 270.30264 °
+          Period: 5325 s
+ 
+--------------------------------------
+-  Moon
+--------------------------------------
+       Periapsis: 360144.873 km
+        Apoapsis: 400666.10399 km
+    Eccentricity: 0.05238
+ Semi-major axis: 386776.4885 km
+     Inclination: 19.70541 °
+             LAN: 350.73202 °
+Argument of peri: 162.9539 °
+    True anomaly: 16.72267 °
+          Period: 2393873 s
+ 

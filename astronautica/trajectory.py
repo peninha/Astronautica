@@ -66,8 +66,8 @@ class Trajectory:
 
         if maneuver.mode == "RTN":
             delta_v_vec_bc = orbit.convert_RTN_to_cartesian(maneuver.RTN, maneuver.t_clock, frame="bodycentric")
-        elif maneuver.mode == "RPN":
-            delta_v_vec_bc = orbit.convert_RPN_to_cartesian(maneuver.RPN, maneuver.t_clock, frame="bodycentric")
+        elif maneuver.mode == "TNB":
+            delta_v_vec_bc = orbit.convert_TNB_to_cartesian(maneuver.TNB, maneuver.t_clock, frame="bodycentric")
         r_vec_bc, v_vec_bc = orbit.state_vectors_at_t_clock(maneuver.t_clock, frame="bodycentric")
         new_v_vec_bc = v_vec_bc + delta_v_vec_bc
         

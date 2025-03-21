@@ -8,35 +8,31 @@ class Maneuver:
     """
     Class representing a maneuver.
     """
-    def __init__(self, RXN, t_clock, name="Maneuver", mode="RTN", orbit_name="Orbit", position_name="Maneuver position"):
+    def __init__(self, delta_v_vec, t_clock, name="Maneuver", mode="RTN", orbit_name="Orbit", position_name="Maneuver position"):
         """
         Initialize a maneuver.
 
         Parameters
         ----------
-        radial : float
-            Radial component of the maneuver
-        prograde : float 
-            Prograde/tangential component of the maneuver
-        normal : float
-            Normal component of the maneuver
+        delta_v_vec : array_like
+            Delta-v vector of the maneuver
         t_clock : float
             Time of the maneuver
         name : str, optional
             Name of the maneuver
         mode : str, optional
-            Mode of initialization - "RTN" or "RPN"
+            Mode of initialization - "RTN" or "TNB"
         """
         if mode == "RTN":
-            self.RTN = np.array(RXN)
-            self.RPN = None
+            self.RTN = np.array(delta_v_vec)
+            self.TNB = None
             self.delta_v = np.linalg.norm(self.RTN)
-        elif mode == "RPN":
-            self.RPN = np.array(RXN) 
+        elif mode == "TNB":
+            self.TNB = np.array(delta_v_vec) 
             self.RTN = None
             self.delta_v = None
         else:
-            raise ValueError("Mode must be 'RTN' or 'RPN'")
+            raise ValueError("Mode must be 'RTN' or 'TNB'")
 
         self.mode = mode
         self.t_clock = t_clock
@@ -46,11 +42,11 @@ class Maneuver:
         self.position_name = position_name
 
     @classmethod
-    def from_RPN(cls, RPN, t_clock, name="Maneuver", orbit_name="Orbit", position_name="Maneuver position"):
+    def from_TNB(cls, TNB, t_clock, name="Maneuver", orbit_name="Orbit", position_name="Maneuver position"):
         """
         Initialize a maneuver from radial, prograde and normal components.
         """
-        return cls(RPN, t_clock, name=name, mode="RPN", orbit_name=orbit_name, position_name=position_name)
+        return cls(TNB, t_clock, name=name, mode="TNB", orbit_name=orbit_name, position_name=position_name)
     
     @classmethod 
     def from_RTN(cls, RTN, t_clock, name="Maneuver", orbit_name="Orbit", position_name="Maneuver position"):
@@ -72,8 +68,8 @@ class Maneuver:
             Angle to local horizon
         """
         angle = np.radians(angle)
-        RPN = np.array([delta_v*np.sin(angle), delta_v*np.cos(angle), 0])
-        return cls(RPN, t_clock, name=name, mode="RPN", orbit_name=orbit_name, position_name=position_name)
+        RTN = np.array([delta_v*np.sin(angle), delta_v*np.cos(angle), 0])
+        return cls(RTN, t_clock, name=name, mode="RTN", orbit_name=orbit_name, position_name=position_name)
 
     @classmethod
     def from_delta_v_vec(cls, delta_v_vec, orbit, t_clock, name="Maneuver", orbit_name="Orbit", position_name="Maneuver position"):
@@ -140,8 +136,8 @@ class Maneuver:
             Whether to correct for oblateness
         """
         delta_v1, delta_v2, T1 = cls.delta_v_for_phase_change(orbit, phase_change, theta_burn, n, oblateness_correction)
-        phase_maneuver1 = cls.from_RPN([0, delta_v1, 0], orbit.t_clock_at_theta(theta_burn), name="Phase Maneuver 1", orbit_name="Phase Transfer orbit", position_name="Phase starting position")
-        phase_maneuver2 = cls.from_RPN([0, delta_v2, 0], orbit.t_clock_at_theta(theta_burn) + T1*n, name="Phase Maneuver 2", orbit_name="Final orbit", position_name="Arrival position")
+        phase_maneuver1 = cls.from_TNB([0, delta_v1, 0], orbit.t_clock_at_theta(theta_burn), name="Phase Maneuver 1", orbit_name="Phase Transfer orbit", position_name="Phase starting position")
+        phase_maneuver2 = cls.from_TNB([0, delta_v2, 0], orbit.t_clock_at_theta(theta_burn) + T1*n, name="Phase Maneuver 2", orbit_name="Final orbit", position_name="Arrival position")
         return phase_maneuver1, phase_maneuver2
     
     @staticmethod
@@ -637,7 +633,7 @@ class Maneuver:
         max_iterations : int, optional
             Maximum number of iterations for the optimization
         """
-        t_clock_burn = cls.find_t_clock_for_relative_theta(orbit_from, orbit_to, theta_rel, from_t_clock=from_t_clock)
+        t_clock_burn = cls.find_t_clock_for_phase_angle(orbit_from, orbit_to, theta_rel, from_t_clock=from_t_clock)
         maneuver, delta_t_opt, delta_v = cls.impact_maneuver_from_t_clock_burn(orbit_from, orbit_to, delta_v_target, delta_t_guess, delta_t_min, delta_t_max, t_clock_burn=t_clock_burn, tol=tol, max_iter=max_iter)
         return {
             "maneuver": maneuver,
@@ -647,7 +643,7 @@ class Maneuver:
         }
 
     @staticmethod
-    def relative_periapsis_argument(orbit_from, orbit_to):
+    def phase_angle_of_omega0(orbit_from, orbit_to):
         """
         Finds the relative periapsis argument between two coplanar (or nearly coplanar) orbits.
         """
@@ -661,34 +657,34 @@ class Maneuver:
         return omega_rel
     
     @classmethod
-    def relative_theta0(cls, orbit_from, orbit_to):
+    def phase_angle_of_theta0(cls, orbit_from, orbit_to):
         """
         Finds the relative theta0 between two coplanar (or nearly coplanar) orbits.
         """
-        omega_rel = cls.relative_periapsis_argument(orbit_from, orbit_to)
+        omega_rel = cls.phase_angle_of_omega0(orbit_from, orbit_to)
         theta0_rel = orbit_to.theta0 - orbit_from.theta0 + omega_rel
         return theta0_rel
     
     @classmethod
-    def relative_theta_at_t_clock(cls, orbit_from, orbit_to, t_clock):
+    def phase_angle_at_t_clock(cls, orbit_from, orbit_to, t_clock):
         """
         Finds the relative theta at a given time between two coplanar (or nearly coplanar) orbits.
         """
-        omega_rel = cls.relative_periapsis_argument(orbit_from, orbit_to)
+        omega_rel = cls.phase_angle_of_omega0(orbit_from, orbit_to)
         theta_rel = orbit_to.theta_at_t_clock(t_clock) - orbit_from.theta_at_t_clock(t_clock) + omega_rel
         # Normalize between -180 and +180
         theta_rel = ((theta_rel + 180) % 360) - 180
         return theta_rel
 
     @classmethod
-    def relative_theta_loop_period(cls, orbit_from, orbit_to, from_t_clock=0, max_iter=1000, tol=1e-6):
+    def t_clock_for_phase_angle(cls, orbit_from, orbit_to, from_t_clock=0, max_iter=1000, tol=1e-6):
         """
-        Finds the period of the relative theta loop between two coplanar (or nearly coplanar) orbits.
+        Finds the t_clock for which two coplanar objects (or nearly coplanar) have the given phase angle.
         """
-        theta_rel0 = cls.relative_theta_at_t_clock(orbit_from, orbit_to, from_t_clock)
+        theta_rel0 = cls.phase_angle_at_t_clock(orbit_from, orbit_to, from_t_clock)
 
         def objective(t_clock):
-            theta_rel = cls.relative_theta_at_t_clock(orbit_from, orbit_to, t_clock)
+            theta_rel = cls.phase_angle_at_t_clock(orbit_from, orbit_to, t_clock)
             diff = ((theta_rel - theta_rel0 + 180) % 360) - 180
             return abs(diff)
         
@@ -705,21 +701,21 @@ class Maneuver:
             raise RuntimeError(f"Failed to find a solution that satisfies the desired relative angle. Best difference found: {result.fun} degrees")
 
     @classmethod
-    def find_t_clock_for_relative_theta(cls, orbit_from, orbit_to, theta_rel, from_t_clock=0, max_iter=1000, tol=1e-6):
+    def find_t_clock_for_phase_angle(cls, orbit_from, orbit_to, theta_rel, from_t_clock=0, max_iter=1000, tol=1e-6):
         """
-        Finds the least time t_clock for which the relative theta between two orbits is equal to theta_rel.
-        Theta_rel is the relative angle of the orbit_to with respect to the orbit_from, positive if ahead, negative if behind.
+        Finds the least time t_clock for which the phase angle between two orbits is equal to theta_rel.
+        Phase angle is the relative angle of the orbit_to with respect to the orbit_from, positive if ahead, negative if behind.
         """
         def objective(t_clock):
-            theta_rel_calc = cls.relative_theta_at_t_clock(orbit_from, orbit_to, t_clock)
+            theta_rel_calc = cls.phase_angle_at_t_clock(orbit_from, orbit_to, t_clock)
             diff = ((theta_rel_calc - theta_rel + 180) % 360) - 180
             return abs(diff)
 
-        loop_period = cls.relative_theta_loop_period(orbit_from, orbit_to, from_t_clock)
+        t_clock_phase = cls.t_clock_for_phase_angle(orbit_from, orbit_to, from_t_clock)
         
         result = minimize_scalar(
             objective,
-            bounds=(from_t_clock, from_t_clock + loop_period),
+            bounds=(from_t_clock, from_t_clock + t_clock_phase),
             method='bounded',
             options={'xatol': tol, 'maxiter': max_iter}
         )

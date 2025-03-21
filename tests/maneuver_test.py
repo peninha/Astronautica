@@ -12,19 +12,19 @@ orbita = Orbit.from_elements(earth, rp=rp, ra=ra, Omega0=45, i=30, omega0=-40, t
 
 trajectory = Trajectory(orbita, orbit_name="Initial Orbit", position_name="Initial position")
 
-maneuver = Maneuver.from_RPN([0, 1, 0], t_clock=4300, name="maneuver1")
+maneuver = Maneuver.from_TNB([1, 0, 0], t_clock=4300, name="maneuver1")
 
 trajectory.add_maneuver(0, maneuver)
 
-maneuver2 = Maneuver.from_RPN([0, 0, 1], t_clock=50000, name="maneuver2")
+maneuver2 = Maneuver.from_TNB([0, 1, 0], t_clock=50000, name="maneuver2")
 
 trajectory.add_maneuver(1, maneuver2)
 
-maneuver3 = Maneuver.from_RPN([-1, 0, 0], t_clock=100000, name="maneuver3")
+maneuver3 = Maneuver.from_TNB([0, 0, 1], t_clock=100000, name="maneuver3")
 
 trajectory.add_maneuver(2, maneuver3)
 
-maneuver4 = Maneuver.from_RPN([0, -1, 0], t_clock=140000, name="maneuver4")
+maneuver4 = Maneuver.from_TNB([-1, 0, 0], t_clock=140000, name="maneuver4")
 
 trajectory.add_maneuver(3, maneuver4)
 

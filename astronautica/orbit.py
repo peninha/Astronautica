@@ -1039,12 +1039,12 @@ class Orbit:
         v_r = v * np.sin(gamma)
         return np.array([v_r, v_t, 0])
     
-    def RPN_at_theta(self, theta):
+    def TNB_at_theta(self, theta):
         """
-        Calculates the radial, prograde and normal velocity vectors at a given true anomaly.
+        Calculates the Tangent, Normal and Binormal velocity vectors at a given true anomaly.
         """
         v = self.v_at_theta(theta)
-        return np.array([0, v, 0])
+        return np.array([v, 0, 0])
 
     ########### ROTATION MATRICES ###########
     @staticmethod
@@ -1297,11 +1297,11 @@ class Orbit:
         else:
             raise ValueError("Invalid frame. Must be 'perifocal' or 'bodycentric'.")
 
-    def convert_RPN_to_cartesian(self, RPN, t_clock, frame="perifocal"):
+    def convert_TNB_to_cartesian(self, TNB, t_clock, frame="perifocal"):
         """
-        Converts the RPN vectors to the Cartesian frame.
+        Converts the TNB vectors to the Cartesian frame.
         """
-        RTN = self.convert_RPN_to_RTN(RPN, t_clock)
+        RTN = self.convert_TNB_to_RTN(TNB, t_clock)
         if frame == "perifocal":
             return self.convert_RTN_to_cartesian(RTN, t_clock, frame="perifocal")
         elif frame == "bodycentric":
@@ -1309,26 +1309,23 @@ class Orbit:
         else:
             raise ValueError("Invalid frame. Must be 'perifocal' or 'bodycentric'.")
 
-    def convert_RPN_to_RTN(self, RPN, t_clock):
+    def convert_TNB_to_RTN(self, TNB, t_clock):
         """
-        Converts the RPN vectors to the RTN frame.
+        Converts the TNB vectors to the RTN frame.
         """
         theta = self.theta_at_t_clock(t_clock)
         gamma = np.radians(self.gamma_at_theta(theta))
-        RTN = np.array([RPN[0] + RPN[1]*np.sin(gamma), RPN[1] * np.cos(gamma), RPN[2]])
+        RTN = np.array([[np.sin(gamma), -np.cos(gamma), 0], [np.cos(gamma), np.sin(gamma), 0], [0, 0, 1]]) @ TNB
         return RTN
 
-    def convert_RTN_to_RPN(self, RTN, t_clock):
+    def convert_RTN_to_TNB(self, RTN, t_clock):
         """
-        Converts the RTN vectors to the RPN frame.
+        Converts the RTN vectors to the TNB frame.
         """
         theta = self.theta_at_t_clock(t_clock)
         gamma = np.radians(self.gamma_at_theta(theta))
-        R, T, N = RTN
-        R_prime = R - T * np.tan(gamma)
-        P_prime = T / np.cos(gamma)
-        N_prime = N
-        return np.array([R_prime, P_prime, N_prime])
+        TNB = np.array([[np.sin(gamma), np.cos(gamma), 0], [-np.cos(gamma), np.sin(gamma), 0], [0, 0, 1]]) @ RTN
+        return TNB
 
     ###########   Stumpff functions   ###########
     @staticmethod

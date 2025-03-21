@@ -1,0 +1,26 @@
+--------------------------------------
+-  Tanajura 10 - Jaci 2
+--------------------------------------
+       Periapsis: 245.35516 km
+        Apoapsis: 253.54684 km
+    Eccentricity: 0.00062
+ Semi-major axis: 6620.451 km
+     Inclination: 19.7448 °
+             LAN: 349.17139 °
+Argument of peri: 303.23101 °
+    True anomaly: 272.54659 °
+          Period: 5361 s
+ 
+--------------------------------------
+-  Moon
+--------------------------------------
+       Periapsis: 362036.83261 km
+        Apoapsis: 395342.41104 km
+    Eccentricity: 0.04325
+ Semi-major axis: 385060.62182 km
+     Inclination: 19.75325 °
+             LAN: 349.69397 °
+Argument of peri: 190.8159 °
+    True anomaly: 316.2383 °
+          Period: 2377961 s
+ 
