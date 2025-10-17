@@ -4,10 +4,10 @@ import numpy as np
 earth = Body("earth")
 
 t0_clock = 0
-t1_clock = 16*24*3600
+t1_clock = 4*24*3600
 
-rp = earth.radius_from_altitude(300)
-ra = earth.radius_from_altitude(20385)
+rp = earth.radius_from_altitude(200)
+ra = earth.radius_from_altitude(12530)
 i = np.degrees(np.arcsin(np.sqrt(2/5*2)))
 Omega0 = 0
 omega0 = 270
